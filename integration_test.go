@@ -40,6 +40,7 @@ func setupTestClient(t *testing.T, lis *bufconn.Listener) (*grpc.ClientConn, fun
 	t.Helper()
 
 	ctx := context.Background()
+	//nolint:staticcheck // DialContext required for bufconn in tests
 	conn, err := grpc.DialContext(
 		ctx,
 		"bufnet",
