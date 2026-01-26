@@ -348,9 +348,9 @@ func (s *Storage) ListCryptoKeys(keyringName string) ([]*kmspb.CryptoKey, error)
 	for _, ck := range keyring.CryptoKeys {
 		primary := ck.Versions[ck.PrimaryVersion]
 		cryptoKeys = append(cryptoKeys, &kmspb.CryptoKey{
-			Name:            ck.Name,
-			CreateTime:      timestamppb.New(ck.CreateTime),
-			Purpose:         ck.Purpose,
+			Name:       ck.Name,
+			CreateTime: timestamppb.New(ck.CreateTime),
+			Purpose:    ck.Purpose,
 			Primary: &kmspb.CryptoKeyVersion{
 				Name:       primary.Name,
 				State:      primary.State,
