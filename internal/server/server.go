@@ -41,20 +41,69 @@ import (
 	"google.golang.org/grpc/codes"
 	"google.golang.org/grpc/status"
 
+	emulatorauth "github.com/blackwell-systems/gcp-emulator-auth"
+	"github.com/blackwell-systems/gcp-kms-emulator/internal/authz"
 	"github.com/blackwell-systems/gcp-kms-emulator/internal/storage"
 )
 
 // Server implements the KMS KeyManagementService
 type Server struct {
 	kmspb.UnimplementedKeyManagementServiceServer
-	storage *storage.Storage
+	storage   *storage.Storage
+	iamClient *emulatorauth.Client
+	iamMode   emulatorauth.AuthMode
 }
 
 // NewServer creates a new KMS server
-func NewServer() *Server {
-	return &Server{
+func NewServer() (*Server, error) {
+	s := &Server{
 		storage: storage.NewStorage(),
 	}
+
+	// Load IAM configuration from environment
+	config := emulatorauth.LoadFromEnv()
+	s.iamMode = config.Mode
+
+	// Connect to IAM emulator if enabled
+	if config.Mode.IsEnabled() {
+		client, err := emulatorauth.NewClient(config.Host, config.Mode)
+		if err != nil {
+			return nil, fmt.Errorf("failed to connect to IAM emulator: %w", err)
+		}
+		s.iamClient = client
+	}
+
+	return s, nil
+}
+
+// checkPermission checks if the principal has permission to perform the operation
+func (s *Server) checkPermission(ctx context.Context, operation string, resource string) error {
+	// If IAM is disabled, allow all operations
+	if s.iamClient == nil {
+		return nil
+	}
+
+	// Extract principal from incoming context
+	principal := emulatorauth.ExtractPrincipalFromContext(ctx)
+
+	// Get permission for operation
+	permCheck, ok := authz.GetPermission(operation)
+	if !ok {
+		// Operation not in permission map - allow (shouldn't happen)
+		return nil
+	}
+
+	// Check permission
+	allowed, err := s.iamClient.CheckPermission(ctx, principal, resource, permCheck.Permission)
+	if err != nil {
+		return status.Errorf(codes.Internal, "IAM check failed: %v", err)
+	}
+
+	if !allowed {
+		return status.Error(codes.PermissionDenied, "Permission denied")
+	}
+
+	return nil
 }
 
 // CreateKeyRing creates a new keyring
@@ -64,6 +113,11 @@ func (s *Server) CreateKeyRing(ctx context.Context, req *kmspb.CreateKeyRingRequ
 	}
 	if req.KeyRingId == "" {
 		return nil, status.Error(codes.InvalidArgument, "key_ring_id is required")
+	}
+
+	// Check permission (against parent for create operations)
+	if err := s.checkPermission(ctx, "CreateKeyRing", authz.NormalizeParentForCreate(req.Parent)); err != nil {
+		return nil, err
 	}
 
 	name := fmt.Sprintf("%s/keyRings/%s", req.Parent, req.KeyRingId)
