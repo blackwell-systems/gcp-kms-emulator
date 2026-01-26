@@ -4,7 +4,7 @@ go 1.24
 
 require (
 	cloud.google.com/go/kms v1.25.0
-	github.com/blackwell-systems/gcp-emulator-auth v0.0.0-20260126221828-36120c614bc3
+	github.com/blackwell-systems/gcp-emulator-auth v0.0.0-20260126224351-6976d522b21f
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 )
