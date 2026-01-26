@@ -56,7 +56,10 @@ func main() {
 	}
 
 	grpcServer := grpc.NewServer()
-	kmsServer := server.NewServer()
+	kmsServer, err := server.NewServer()
+	if err != nil {
+		log.Fatalf("Failed to create KMS server: %v", err)
+	}
 	kmspb.RegisterKeyManagementServiceServer(grpcServer, kmsServer)
 	reflection.Register(grpcServer)
 

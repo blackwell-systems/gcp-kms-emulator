@@ -15,6 +15,7 @@ A production-grade implementation providing complete, behaviorally-accurate KMS 
 - **SDK Compatible** - Drop-in replacement for official `cloud.google.com/go/kms` (gRPC)
 - **curl Friendly** - Full REST API with JSON, test from any language or terminal
 - **Real Encryption** - AES-256-GCM for symmetric encryption (not mocked)
+- **IAM Integration** - Optional permission checks with GCP IAM Emulator
 - **No GCP Credentials** - Works entirely offline without authentication
 - **Fast & Lightweight** - In-memory storage, starts in milliseconds
 - **Docker Support** - Pre-built containers (gRPC-only, REST-only, or dual)
@@ -182,6 +183,92 @@ curl -X POST "http://localhost:8080/v1/projects/my-project/locations/global/keyR
 
 **REST API matches GCP's official REST endpoints** - same paths, same JSON format, same behavior.
 
+## IAM Integration
+
+The KMS emulator supports optional permission checks using the [GCP IAM Emulator](https://github.com/blackwell-systems/gcp-iam-emulator).
+
+### Configuration
+
+**Environment Variables:**
+
+- `IAM_MODE` - Controls permission enforcement (default: `off`)
+  - `off` - No permission checks (legacy behavior)
+  - `permissive` - Check permissions, fail-open on connectivity errors
+  - `strict` - Check permissions, fail-closed on connectivity errors (for CI)
+- `IAM_HOST` - IAM emulator address (default: `localhost:8080`)
+
+### Usage
+
+**Without IAM (default):**
+```bash
+# No permission checks - all operations succeed
+server
+```
+
+**With IAM (permissive mode):**
+```bash
+# Start IAM emulator first
+iam-emulator
+
+# Start KMS with IAM checks (fail-open)
+IAM_MODE=permissive IAM_HOST=localhost:8080 server
+```
+
+**With IAM (strict mode for CI):**
+```bash
+# All operations require valid permissions
+IAM_MODE=strict IAM_HOST=localhost:8080 server
+```
+
+### Principal Injection
+
+Specify the calling principal for permission checks:
+
+**gRPC:**
+```go
+ctx := metadata.AppendToOutgoingContext(ctx, "x-emulator-principal", "user:admin@example.com")
+resp, err := client.CreateKeyRing(ctx, req)
+```
+
+**REST:**
+```bash
+curl -H "X-Emulator-Principal: user:admin@example.com" \
+  -X POST "http://localhost:8080/v1/projects/my-project/locations/global/keyRings?keyRingId=my-keyring"
+```
+
+### Permissions
+
+KMS operations map to GCP IAM permissions:
+
+| Operation | Permission | Resource |
+|-----------|-----------|----------|
+| CreateKeyRing | `cloudkms.keyRings.create` | Parent location |
+| GetKeyRing | `cloudkms.keyRings.get` | KeyRing |
+| ListKeyRings | `cloudkms.keyRings.list` | Parent location |
+| CreateCryptoKey | `cloudkms.cryptoKeys.create` | Parent keyring |
+| GetCryptoKey | `cloudkms.cryptoKeys.get` | CryptoKey |
+| UpdateCryptoKey | `cloudkms.cryptoKeys.update` | CryptoKey |
+| ListCryptoKeys | `cloudkms.cryptoKeys.list` | Parent keyring |
+| Encrypt | `cloudkms.cryptoKeys.encrypt` | CryptoKey |
+| Decrypt | `cloudkms.cryptoKeys.decrypt` | CryptoKey |
+| CreateCryptoKeyVersion | `cloudkms.cryptoKeyVersions.create` | Parent cryptokey |
+| GetCryptoKeyVersion | `cloudkms.cryptoKeyVersions.get` | CryptoKeyVersion |
+| UpdateCryptoKeyVersion | `cloudkms.cryptoKeyVersions.update` | CryptoKeyVersion |
+| ListCryptoKeyVersions | `cloudkms.cryptoKeyVersions.list` | Parent cryptokey |
+| UpdateCryptoKeyPrimaryVersion | `cloudkms.cryptoKeys.update` | CryptoKey |
+| DestroyCryptoKeyVersion | `cloudkms.cryptoKeyVersions.destroy` | CryptoKeyVersion |
+
+### Mode Differences
+
+| Scenario | `off` | `permissive` | `strict` |
+|----------|-------|--------------|----------|
+| No IAM emulator | Allow | Allow | Deny |
+| IAM unavailable | Allow | Allow | Deny |
+| No principal | Allow | Deny | Deny |
+| Permission denied | Allow | Deny | Deny |
+
+**Use `off` for local dev, `permissive` for integration tests, `strict` for CI.**
+
 ## Docker
 
 ### Build Docker Images
@@ -252,6 +339,8 @@ Maintained by **Dayna Blackwell** — founder of Blackwell Systems, building ref
 ## Related Projects
 
 - [GCP Secret Manager Emulator](https://github.com/blackwell-systems/gcp-secret-manager-emulator) - Reference implementation for Secret Manager API
+- [GCP IAM Emulator](https://github.com/blackwell-systems/gcp-iam-emulator) - Local IAM policy enforcement for emulators
+- [gcp-emulator-auth](https://github.com/blackwell-systems/gcp-emulator-auth) - Shared authentication library for GCP emulators
 
 ## License
 

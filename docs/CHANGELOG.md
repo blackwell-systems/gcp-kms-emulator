@@ -7,6 +7,22 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- **IAM Integration**: Optional permission checks with GCP IAM Emulator
+  - Three authorization modes: off (default), permissive (fail-open), strict (fail-closed)
+  - Environment variables: `IAM_MODE` and `IAM_HOST`
+  - Principal injection via `x-emulator-principal` (gRPC) and `X-Emulator-Principal` (HTTP)
+  - Complete operation-to-permission mapping (14 operations)
+  - Resource normalization for permission checks
+  - Integration tests with IAM emulator
+  - Docker Compose example with IAM + KMS
+- **Shared Authentication Library**: Uses `gcp-emulator-auth` for standardized IAM integration
+- **Permission Reference**: Complete table of operations → permissions → resource targets in README
+
+### Changed
+- Server initialization now returns error (for IAM connection failures)
+- Non-breaking: `IAM_MODE=off` by default maintains legacy behavior
+
 ## [0.1.0] - 2026-01-26
 
 ### Added

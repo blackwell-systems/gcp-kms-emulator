@@ -138,6 +138,10 @@ func (s *Server) GetKeyRing(ctx context.Context, req *kmspb.GetKeyRingRequest) (
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
+	if err := s.checkPermission(ctx, "GetKeyRing", authz.NormalizeKeyRingResource(req.Name)); err != nil {
+		return nil, err
+	}
+
 	keyring, err := s.storage.GetKeyRing(req.Name)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
@@ -150,6 +154,10 @@ func (s *Server) GetKeyRing(ctx context.Context, req *kmspb.GetKeyRingRequest) (
 func (s *Server) ListKeyRings(ctx context.Context, req *kmspb.ListKeyRingsRequest) (*kmspb.ListKeyRingsResponse, error) {
 	if req.Parent == "" {
 		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	}
+
+	if err := s.checkPermission(ctx, "ListKeyRings", authz.NormalizeParentForCreate(req.Parent)); err != nil {
+		return nil, err
 	}
 
 	keyrings, err := s.storage.ListKeyRings(req.Parent)
@@ -174,6 +182,10 @@ func (s *Server) CreateCryptoKey(ctx context.Context, req *kmspb.CreateCryptoKey
 	}
 	if req.CryptoKey == nil {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key is required")
+	}
+
+	if err := s.checkPermission(ctx, "CreateCryptoKey", authz.NormalizeKeyRingResource(req.Parent)); err != nil {
+		return nil, err
 	}
 
 	purpose := req.CryptoKey.Purpose
@@ -207,6 +219,10 @@ func (s *Server) GetCryptoKey(ctx context.Context, req *kmspb.GetCryptoKeyReques
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
+	if err := s.checkPermission(ctx, "GetCryptoKey", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
+		return nil, err
+	}
+
 	cryptoKey, err := s.storage.GetCryptoKey(req.Name)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
@@ -222,6 +238,10 @@ func (s *Server) Encrypt(ctx context.Context, req *kmspb.EncryptRequest) (*kmspb
 	}
 	if len(req.Plaintext) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "plaintext is required")
+	}
+
+	if err := s.checkPermission(ctx, "Encrypt", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
+		return nil, err
 	}
 
 	ciphertext, err := s.storage.Encrypt(req.Name, req.Plaintext)
@@ -248,6 +268,10 @@ func (s *Server) Decrypt(ctx context.Context, req *kmspb.DecryptRequest) (*kmspb
 		return nil, status.Error(codes.InvalidArgument, "ciphertext is required")
 	}
 
+	if err := s.checkPermission(ctx, "Decrypt", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
+		return nil, err
+	}
+
 	plaintext, err := s.storage.Decrypt(req.Name, req.Ciphertext)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -265,6 +289,10 @@ func (s *Server) Decrypt(ctx context.Context, req *kmspb.DecryptRequest) (*kmspb
 func (s *Server) ListCryptoKeys(ctx context.Context, req *kmspb.ListCryptoKeysRequest) (*kmspb.ListCryptoKeysResponse, error) {
 	if req.Parent == "" {
 		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	}
+
+	if err := s.checkPermission(ctx, "ListCryptoKeys", authz.NormalizeKeyRingResource(req.Parent)); err != nil {
+		return nil, err
 	}
 
 	cryptoKeys, err := s.storage.ListCryptoKeys(req.Parent)
@@ -287,6 +315,10 @@ func (s *Server) ListCryptoKeyVersions(ctx context.Context, req *kmspb.ListCrypt
 		return nil, status.Error(codes.InvalidArgument, "parent is required")
 	}
 
+	if err := s.checkPermission(ctx, "ListCryptoKeyVersions", authz.NormalizeCryptoKeyResource(req.Parent)); err != nil {
+		return nil, err
+	}
+
 	versions, err := s.storage.ListCryptoKeyVersions(req.Parent)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -307,6 +339,10 @@ func (s *Server) GetCryptoKeyVersion(ctx context.Context, req *kmspb.GetCryptoKe
 		return nil, status.Error(codes.InvalidArgument, "name is required")
 	}
 
+	if err := s.checkPermission(ctx, "GetCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
+		return nil, err
+	}
+
 	version, err := s.storage.GetCryptoKeyVersion(req.Name)
 	if err != nil {
 		return nil, status.Error(codes.NotFound, err.Error())
@@ -318,6 +354,10 @@ func (s *Server) GetCryptoKeyVersion(ctx context.Context, req *kmspb.GetCryptoKe
 func (s *Server) CreateCryptoKeyVersion(ctx context.Context, req *kmspb.CreateCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
 	if req.Parent == "" {
 		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	}
+
+	if err := s.checkPermission(ctx, "CreateCryptoKeyVersion", authz.NormalizeCryptoKeyResource(req.Parent)); err != nil {
+		return nil, err
 	}
 
 	version, err := s.storage.CreateCryptoKeyVersion(req.Parent)
@@ -334,6 +374,10 @@ func (s *Server) CreateCryptoKeyVersion(ctx context.Context, req *kmspb.CreateCr
 func (s *Server) UpdateCryptoKey(ctx context.Context, req *kmspb.UpdateCryptoKeyRequest) (*kmspb.CryptoKey, error) {
 	if req.CryptoKey == nil || req.CryptoKey.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key.name is required")
+	}
+
+	if err := s.checkPermission(ctx, "UpdateCryptoKey", authz.NormalizeCryptoKeyResource(req.CryptoKey.Name)); err != nil {
+		return nil, err
 	}
 
 	cryptoKey, err := s.storage.UpdateCryptoKey(req.CryptoKey.Name, req.CryptoKey.Labels)
@@ -356,6 +400,10 @@ func (s *Server) UpdateCryptoKeyVersion(ctx context.Context, req *kmspb.UpdateCr
 		return nil, status.Error(codes.InvalidArgument, "crypto_key_version.state is required")
 	}
 
+	if err := s.checkPermission(ctx, "UpdateCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.CryptoKeyVersion.Name)); err != nil {
+		return nil, err
+	}
+
 	version, err := s.storage.UpdateCryptoKeyVersion(req.CryptoKeyVersion.Name, req.CryptoKeyVersion.State)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
@@ -373,6 +421,10 @@ func (s *Server) UpdateCryptoKeyPrimaryVersion(ctx context.Context, req *kmspb.U
 	}
 	if req.CryptoKeyVersionId == "" {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key_version_id is required")
+	}
+
+	if err := s.checkPermission(ctx, "UpdateCryptoKeyPrimaryVersion", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
+		return nil, err
 	}
 
 	versionName := fmt.Sprintf("%s/cryptoKeyVersions/%s", req.Name, req.CryptoKeyVersionId)
@@ -393,6 +445,10 @@ func (s *Server) UpdateCryptoKeyPrimaryVersion(ctx context.Context, req *kmspb.U
 func (s *Server) DestroyCryptoKeyVersion(ctx context.Context, req *kmspb.DestroyCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
 	if req.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+
+	if err := s.checkPermission(ctx, "DestroyCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
+		return nil, err
 	}
 
 	version, err := s.storage.DestroyCryptoKeyVersion(req.Name)

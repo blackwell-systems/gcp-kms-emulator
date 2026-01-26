@@ -19,7 +19,10 @@ func setupTestServer(t *testing.T) (*grpc.Server, *bufconn.Listener, func()) {
 	lis := bufconn.Listen(1024 * 1024)
 
 	grpcServer := grpc.NewServer()
-	kmsServer := server.NewServer()
+	kmsServer, err := server.NewServer()
+	if err != nil {
+		t.Fatalf("Failed to create KMS server: %v", err)
+	}
 	kmspb.RegisterKeyManagementServiceServer(grpcServer, kmsServer)
 
 	go func() {

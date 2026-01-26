@@ -4,6 +4,7 @@ go 1.25.5
 
 require (
 	cloud.google.com/go/kms v1.25.0
+	github.com/blackwell-systems/gcp-emulator-auth v0.0.0-20260126221828-36120c614bc3
 	google.golang.org/grpc v1.78.0
 	google.golang.org/protobuf v1.36.11
 )
@@ -11,7 +12,6 @@ require (
 require (
 	cloud.google.com/go/iam v1.5.3 // indirect
 	cloud.google.com/go/longrunning v0.8.0 // indirect
-	github.com/blackwell-systems/gcp-emulator-auth v0.0.0-20260126221828-36120c614bc3 // indirect
 	golang.org/x/net v0.47.0 // indirect
 	golang.org/x/sys v0.38.0 // indirect
 	golang.org/x/text v0.33.0 // indirect
