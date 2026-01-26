@@ -28,19 +28,26 @@ A production-grade implementation providing complete, behaviorally-accurate KMS 
 - `ListKeyRings` - List all keyrings
 - `CreateCryptoKey` - Create encryption/decryption keys
 - `GetCryptoKey` - Retrieve key metadata
+- `ListCryptoKeys` - List all keys in a keyring
+
+### Key Versioning
+- `CreateCryptoKeyVersion` - Create new key versions for rotation
+- `UpdateCryptoKeyPrimaryVersion` - Switch to a different key version
 
 ### Encryption
 - `Encrypt` - Encrypt data with a crypto key (AES-256-GCM)
-- `Decrypt` - Decrypt data with a crypto key
+- `Decrypt` - Decrypt data with a crypto key (works with any enabled version)
 
 ### Not Yet Implemented
-- Key versioning (CreateCryptoKeyVersion, etc.)
-- Asymmetric operations (Sign, Verify, AsymmetricDecrypt)
+- Key version management (ListCryptoKeyVersions, GetCryptoKeyVersion, UpdateCryptoKeyVersion)
+- Key lifecycle (DestroyCryptoKeyVersion, RestoreCryptoKeyVersion, UpdateCryptoKey)
+- Asymmetric operations (AsymmetricSign, AsymmetricDecrypt, GetPublicKey)
 - MAC operations (MacSign, MacVerify)
-- Import/Export (ImportCryptoKeyVersion, etc.)
-- Advanced key management (Update, Destroy, Restore)
+- Import/Export (ImportCryptoKeyVersion, CreateImportJob, etc.)
+- Raw operations (RawEncrypt, RawDecrypt, Decapsulate)
+- Random generation (GenerateRandomBytes)
 
-**Current coverage:** 6 of ~26 methods (23%) - focused on core encryption use case
+**Current coverage:** 9 of ~26 methods (35%) - core encryption + key rotation workflow
 
 ## Quick Start
 

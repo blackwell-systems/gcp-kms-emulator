@@ -301,6 +301,131 @@ func (s *Storage) decryptWithVersion(version *StoredCryptoKeyVersion, ciphertext
 	return gcm.Open(nil, nonce, ciphertext, nil)
 }
 
+// ListCryptoKeys lists all crypto keys in a keyring
+func (s *Storage) ListCryptoKeys(keyringName string) ([]*kmspb.CryptoKey, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	keyring, exists := s.keyrings[keyringName]
+	if !exists {
+		return nil, fmt.Errorf("keyring not found: %s", keyringName)
+	}
+
+	var cryptoKeys []*kmspb.CryptoKey
+	for _, ck := range keyring.CryptoKeys {
+		primary := ck.Versions[ck.PrimaryVersion]
+		cryptoKeys = append(cryptoKeys, &kmspb.CryptoKey{
+			Name:            ck.Name,
+			CreateTime:      timestamppb.New(ck.CreateTime),
+			Purpose:         ck.Purpose,
+			Primary: &kmspb.CryptoKeyVersion{
+				Name:       primary.Name,
+				State:      primary.State,
+				CreateTime: timestamppb.New(primary.CreateTime),
+				Algorithm:  primary.Algorithm,
+			},
+			VersionTemplate: ck.VersionTemplate,
+			Labels:          ck.Labels,
+		})
+	}
+
+	return cryptoKeys, nil
+}
+
+// CreateCryptoKeyVersion creates a new version for an existing crypto key
+func (s *Storage) CreateCryptoKeyVersion(keyName string) (*kmspb.CryptoKeyVersion, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var cryptoKey *StoredCryptoKey
+	for _, keyring := range s.keyrings {
+		if ck, exists := keyring.CryptoKeys[keyName]; exists {
+			cryptoKey = ck
+			break
+		}
+	}
+
+	if cryptoKey == nil {
+		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+	}
+
+	now := time.Now()
+	versionID := cryptoKey.NextVersionID
+	versionName := fmt.Sprintf("%s/cryptoKeyVersions/%d", keyName, versionID)
+
+	algorithm := kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION
+	if cryptoKey.VersionTemplate != nil && cryptoKey.VersionTemplate.Algorithm != kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED {
+		algorithm = cryptoKey.VersionTemplate.Algorithm
+	}
+
+	symmetricKey := make([]byte, 32)
+	if _, err := io.ReadFull(rand.Reader, symmetricKey); err != nil {
+		return nil, fmt.Errorf("failed to generate key: %w", err)
+	}
+
+	version := &StoredCryptoKeyVersion{
+		Name:         versionName,
+		State:        kmspb.CryptoKeyVersion_ENABLED,
+		CreateTime:   now,
+		Algorithm:    algorithm,
+		SymmetricKey: symmetricKey,
+	}
+
+	cryptoKey.Versions[versionName] = version
+	cryptoKey.NextVersionID++
+
+	return &kmspb.CryptoKeyVersion{
+		Name:       versionName,
+		State:      kmspb.CryptoKeyVersion_ENABLED,
+		CreateTime: timestamppb.New(now),
+		Algorithm:  algorithm,
+	}, nil
+}
+
+// UpdateCryptoKeyPrimaryVersion sets a new primary version for a crypto key
+func (s *Storage) UpdateCryptoKeyPrimaryVersion(keyName, versionName string) (*kmspb.CryptoKey, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var cryptoKey *StoredCryptoKey
+	for _, keyring := range s.keyrings {
+		if ck, exists := keyring.CryptoKeys[keyName]; exists {
+			cryptoKey = ck
+			break
+		}
+	}
+
+	if cryptoKey == nil {
+		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+	}
+
+	version, exists := cryptoKey.Versions[versionName]
+	if !exists {
+		return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+	}
+
+	if version.State != kmspb.CryptoKeyVersion_ENABLED {
+		return nil, fmt.Errorf("crypto key version is not enabled: %s", versionName)
+	}
+
+	cryptoKey.PrimaryVersion = versionName
+
+	primary := cryptoKey.Versions[cryptoKey.PrimaryVersion]
+	return &kmspb.CryptoKey{
+		Name:       cryptoKey.Name,
+		CreateTime: timestamppb.New(cryptoKey.CreateTime),
+		Purpose:    cryptoKey.Purpose,
+		Primary: &kmspb.CryptoKeyVersion{
+			Name:       primary.Name,
+			State:      primary.State,
+			CreateTime: timestamppb.New(primary.CreateTime),
+			Algorithm:  primary.Algorithm,
+		},
+		VersionTemplate: cryptoKey.VersionTemplate,
+		Labels:          cryptoKey.Labels,
+	}, nil
+}
+
 // Clear removes all stored data (for testing)
 func (s *Storage) Clear() {
 	s.mu.Lock()
