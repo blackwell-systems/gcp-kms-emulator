@@ -1,0 +1,14 @@
+run:
+  timeout: 5m
+  tests: true
+  build-tags: []
+  skip-dirs: []
+  skip-files: []
+
+linters:
+  enable:
+    - gofmt
+    - govet
+    - staticcheck
+    - ineffassign
+    - unused
