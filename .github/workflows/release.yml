@@ -1,0 +1,154 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  release:
+    name: Create Release
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+      with:
+        fetch-depth: 0
+
+    - name: Set up Go
+      uses: actions/setup-go@v5
+      with:
+        go-version: '1.24'
+
+    - name: Run tests
+      run: go test -v ./...
+
+    - name: Build binaries
+      run: |
+        # Linux AMD64
+        GOOS=linux GOARCH=amd64 go build -o gcp-kms-emulator-linux-amd64 ./cmd/server
+        GOOS=linux GOARCH=amd64 go build -o gcp-kms-emulator-rest-linux-amd64 ./cmd/server-rest
+        GOOS=linux GOARCH=amd64 go build -o gcp-kms-emulator-dual-linux-amd64 ./cmd/server-dual
+        
+        # Linux ARM64
+        GOOS=linux GOARCH=arm64 go build -o gcp-kms-emulator-linux-arm64 ./cmd/server
+        GOOS=linux GOARCH=arm64 go build -o gcp-kms-emulator-rest-linux-arm64 ./cmd/server-rest
+        GOOS=linux GOARCH=arm64 go build -o gcp-kms-emulator-dual-linux-arm64 ./cmd/server-dual
+        
+        # macOS AMD64
+        GOOS=darwin GOARCH=amd64 go build -o gcp-kms-emulator-darwin-amd64 ./cmd/server
+        GOOS=darwin GOARCH=amd64 go build -o gcp-kms-emulator-rest-darwin-amd64 ./cmd/server-rest
+        GOOS=darwin GOARCH=amd64 go build -o gcp-kms-emulator-dual-darwin-amd64 ./cmd/server-dual
+        
+        # macOS ARM64
+        GOOS=darwin GOARCH=arm64 go build -o gcp-kms-emulator-darwin-arm64 ./cmd/server
+        GOOS=darwin GOARCH=arm64 go build -o gcp-kms-emulator-rest-darwin-arm64 ./cmd/server-rest
+        GOOS=darwin GOARCH=arm64 go build -o gcp-kms-emulator-dual-darwin-arm64 ./cmd/server-dual
+        
+        # Windows AMD64
+        GOOS=windows GOARCH=amd64 go build -o gcp-kms-emulator-windows-amd64.exe ./cmd/server
+        GOOS=windows GOARCH=amd64 go build -o gcp-kms-emulator-rest-windows-amd64.exe ./cmd/server-rest
+        GOOS=windows GOARCH=amd64 go build -o gcp-kms-emulator-dual-windows-amd64.exe ./cmd/server-dual
+
+    - name: Create checksums
+      run: |
+        sha256sum gcp-kms-emulator-* > checksums.txt
+
+    - name: Extract changelog
+      id: changelog
+      run: |
+        TAG=${GITHUB_REF#refs/tags/}
+        awk "/## \[$TAG\]/,/## \[/" docs/CHANGELOG.md | grep -v "^## \[" | sed '/^$/d' > release_notes.md
+        cat release_notes.md
+
+    - name: Create Release
+      uses: softprops/action-gh-release@v2
+      with:
+        body_path: release_notes.md
+        files: |
+          gcp-kms-emulator-linux-amd64
+          gcp-kms-emulator-linux-arm64
+          gcp-kms-emulator-darwin-amd64
+          gcp-kms-emulator-darwin-arm64
+          gcp-kms-emulator-windows-amd64.exe
+          gcp-kms-emulator-rest-linux-amd64
+          gcp-kms-emulator-rest-linux-arm64
+          gcp-kms-emulator-rest-darwin-amd64
+          gcp-kms-emulator-rest-darwin-arm64
+          gcp-kms-emulator-rest-windows-amd64.exe
+          gcp-kms-emulator-dual-linux-amd64
+          gcp-kms-emulator-dual-linux-arm64
+          gcp-kms-emulator-dual-darwin-amd64
+          gcp-kms-emulator-dual-darwin-arm64
+          gcp-kms-emulator-dual-windows-amd64.exe
+          checksums.txt
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+  docker:
+    name: Build and Push Docker Images
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up QEMU
+      uses: docker/setup-qemu-action@v3
+
+    - name: Set up Docker Buildx
+      uses: docker/setup-buildx-action@v3
+
+    - name: Log in to GitHub Container Registry
+      uses: docker/login-action@v3
+      with:
+        registry: ghcr.io
+        username: ${{ github.actor }}
+        password: ${{ secrets.GITHUB_TOKEN }}
+
+    - name: Extract version
+      id: version
+      run: echo "VERSION=${GITHUB_REF#refs/tags/v}" >> $GITHUB_OUTPUT
+
+    - name: Build and push gRPC variant
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        build-args: |
+          VARIANT=grpc
+        tags: |
+          ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}
+          ghcr.io/${{ github.repository }}:latest
+          ghcr.io/${{ github.repository }}:grpc
+          ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-grpc
+
+    - name: Build and push REST variant
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        build-args: |
+          VARIANT=rest
+        tags: |
+          ghcr.io/${{ github.repository }}:rest
+          ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-rest
+
+    - name: Build and push Dual variant
+      uses: docker/build-push-action@v5
+      with:
+        context: .
+        platforms: linux/amd64,linux/arm64
+        push: true
+        build-args: |
+          VARIANT=dual
+        tags: |
+          ghcr.io/${{ github.repository }}:dual
+          ghcr.io/${{ github.repository }}:${{ steps.version.outputs.VERSION }}-dual

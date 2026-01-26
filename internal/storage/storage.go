@@ -1,4 +1,37 @@
-// Package storage provides in-memory storage for KMS resources
+// Package storage provides thread-safe in-memory storage for KMS resources.
+//
+// This package implements the storage layer for the GCP KMS emulator, providing
+// a complete in-memory representation of keyrings, crypto keys, and key versions
+// with real AES-256-GCM encryption.
+//
+// All storage operations are thread-safe using sync.RWMutex, allowing concurrent
+// access from multiple gRPC or REST API handlers.
+//
+// # Key Features
+//
+// Real cryptographic operations using Go's crypto/aes and crypto/cipher packages.
+// Automatic key version management with auto-incrementing version IDs. Version-aware
+// decryption that tries all enabled versions. State management for version lifecycle
+// (ENABLED, DISABLED, DESTROY_SCHEDULED, DESTROYED).
+//
+// # Storage Structure
+//
+// Storage maintains a hierarchical structure:
+//   - KeyRings: Top-level containers identified by name
+//   - CryptoKeys: Keys within keyrings with purpose and metadata
+//   - CryptoKeyVersions: Individual versions with symmetric keys and state
+//
+// # Thread Safety
+//
+// All public methods use appropriate read or write locks. Read operations
+// (Get, List) use RLock for concurrent reads. Write operations (Create, Update,
+// Delete) use Lock for exclusive access.
+//
+// # Encryption
+//
+// Encrypt operations use the primary version's symmetric key. Decrypt operations
+// try all enabled versions to support data encrypted with older keys. Each version
+// has a unique 256-bit AES key generated with crypto/rand.
 package storage
 
 import (

@@ -1,4 +1,35 @@
-// Package server implements the KMS gRPC server
+// Package server implements the gRPC server for the Google Cloud KMS API.
+//
+// This package provides the gRPC service implementation that handles KMS requests
+// and delegates to the storage layer. It implements the KeyManagementService
+// interface from cloud.google.com/go/kms/apiv1/kmspb.
+//
+// # Error Handling
+//
+// All methods validate input parameters and return appropriate gRPC status codes:
+//   - InvalidArgument: Missing required fields
+//   - NotFound: Requested resource doesn't exist
+//   - AlreadyExists: Resource already exists
+//   - FailedPrecondition: Invalid state transition
+//   - Internal: Unexpected errors
+//
+// # Supported Methods
+//
+// KeyRing Management: CreateKeyRing, GetKeyRing, ListKeyRings
+//
+// CryptoKey Management: CreateCryptoKey, GetCryptoKey, ListCryptoKeys, UpdateCryptoKey
+//
+// CryptoKeyVersion Management: CreateCryptoKeyVersion, GetCryptoKeyVersion,
+// ListCryptoKeyVersions, UpdateCryptoKeyVersion, UpdateCryptoKeyPrimaryVersion,
+// DestroyCryptoKeyVersion
+//
+// Encryption Operations: Encrypt, Decrypt
+//
+// # Usage
+//
+//	grpcServer := grpc.NewServer()
+//	kmsServer := server.NewServer()
+//	kmspb.RegisterKeyManagementServiceServer(grpcServer, kmsServer)
 package server
 
 import (

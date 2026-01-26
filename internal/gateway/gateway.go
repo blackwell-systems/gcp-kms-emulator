@@ -1,4 +1,42 @@
-// Package gateway provides HTTP/REST API access to the gRPC KMS service
+// Package gateway provides REST/HTTP API access to the KMS gRPC service.
+//
+// This package implements a custom HTTP gateway that translates REST API requests
+// to gRPC calls, providing GCP-compatible REST endpoints for the KMS API.
+//
+// # API Compatibility
+//
+// The REST API matches Google Cloud KMS official endpoints:
+//   - Path structure: /v1/projects/{project}/locations/{location}/...
+//   - HTTP methods: GET (retrieve), POST (create/action), PATCH (update)
+//   - JSON request/response bodies using protobuf JSON encoding
+//   - Query parameters for pagination (pageToken, pageSize)
+//
+// # Supported Endpoints
+//
+// KeyRings:
+//   - POST   /v1/.../keyRings?keyRingId=...
+//   - GET    /v1/.../keyRings/{keyRing}
+//   - GET    /v1/.../keyRings
+//
+// CryptoKeys:
+//   - POST   /v1/.../cryptoKeys?cryptoKeyId=...
+//   - GET    /v1/.../cryptoKeys/{key}
+//   - GET    /v1/.../cryptoKeys
+//   - POST   /v1/.../cryptoKeys/{key}:encrypt
+//   - POST   /v1/.../cryptoKeys/{key}:decrypt
+//   - POST   /v1/.../cryptoKeys/{key}:updatePrimaryVersion
+//
+// CryptoKeyVersions:
+//   - POST   /v1/.../cryptoKeyVersions
+//   - GET    /v1/.../cryptoKeyVersions/{version}
+//   - GET    /v1/.../cryptoKeyVersions
+//   - PATCH  /v1/.../cryptoKeyVersions/{version}
+//   - POST   /v1/.../cryptoKeyVersions/{version}:destroy
+//
+// # Usage
+//
+//	gateway := gateway.NewServer("localhost:9090")
+//	gateway.Start(":8080")
 package gateway
 
 import (
