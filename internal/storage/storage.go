@@ -426,6 +426,142 @@ func (s *Storage) UpdateCryptoKeyPrimaryVersion(keyName, versionName string) (*k
 	}, nil
 }
 
+// GetCryptoKeyVersion retrieves a specific crypto key version
+func (s *Storage) GetCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersion, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	for _, keyring := range s.keyrings {
+		for _, cryptoKey := range keyring.CryptoKeys {
+			if version, exists := cryptoKey.Versions[versionName]; exists {
+				return &kmspb.CryptoKeyVersion{
+					Name:       version.Name,
+					State:      version.State,
+					CreateTime: timestamppb.New(version.CreateTime),
+					Algorithm:  version.Algorithm,
+				}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+}
+
+// ListCryptoKeyVersions lists all versions of a crypto key
+func (s *Storage) ListCryptoKeyVersions(keyName string) ([]*kmspb.CryptoKeyVersion, error) {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	var cryptoKey *StoredCryptoKey
+	for _, keyring := range s.keyrings {
+		if ck, exists := keyring.CryptoKeys[keyName]; exists {
+			cryptoKey = ck
+			break
+		}
+	}
+
+	if cryptoKey == nil {
+		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+	}
+
+	var versions []*kmspb.CryptoKeyVersion
+	for _, version := range cryptoKey.Versions {
+		versions = append(versions, &kmspb.CryptoKeyVersion{
+			Name:       version.Name,
+			State:      version.State,
+			CreateTime: timestamppb.New(version.CreateTime),
+			Algorithm:  version.Algorithm,
+		})
+	}
+
+	return versions, nil
+}
+
+// UpdateCryptoKeyVersion updates the state of a crypto key version
+func (s *Storage) UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoKeyVersion_CryptoKeyVersionState) (*kmspb.CryptoKeyVersion, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, keyring := range s.keyrings {
+		for _, cryptoKey := range keyring.CryptoKeys {
+			if version, exists := cryptoKey.Versions[versionName]; exists {
+				version.State = state
+				return &kmspb.CryptoKeyVersion{
+					Name:       version.Name,
+					State:      version.State,
+					CreateTime: timestamppb.New(version.CreateTime),
+					Algorithm:  version.Algorithm,
+				}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+}
+
+// DestroyCryptoKeyVersion schedules a crypto key version for destruction
+func (s *Storage) DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersion, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, keyring := range s.keyrings {
+		for _, cryptoKey := range keyring.CryptoKeys {
+			if version, exists := cryptoKey.Versions[versionName]; exists {
+				if version.State == kmspb.CryptoKeyVersion_DESTROYED || version.State == kmspb.CryptoKeyVersion_DESTROY_SCHEDULED {
+					return nil, fmt.Errorf("crypto key version already destroyed or scheduled: %s", versionName)
+				}
+
+				version.State = kmspb.CryptoKeyVersion_DESTROY_SCHEDULED
+				return &kmspb.CryptoKeyVersion{
+					Name:       version.Name,
+					State:      version.State,
+					CreateTime: timestamppb.New(version.CreateTime),
+					Algorithm:  version.Algorithm,
+				}, nil
+			}
+		}
+	}
+
+	return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+}
+
+// UpdateCryptoKey updates metadata of a crypto key
+func (s *Storage) UpdateCryptoKey(keyName string, labels map[string]string) (*kmspb.CryptoKey, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	var cryptoKey *StoredCryptoKey
+	for _, keyring := range s.keyrings {
+		if ck, exists := keyring.CryptoKeys[keyName]; exists {
+			cryptoKey = ck
+			break
+		}
+	}
+
+	if cryptoKey == nil {
+		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+	}
+
+	if labels != nil {
+		cryptoKey.Labels = labels
+	}
+
+	primary := cryptoKey.Versions[cryptoKey.PrimaryVersion]
+	return &kmspb.CryptoKey{
+		Name:       cryptoKey.Name,
+		CreateTime: timestamppb.New(cryptoKey.CreateTime),
+		Purpose:    cryptoKey.Purpose,
+		Primary: &kmspb.CryptoKeyVersion{
+			Name:       primary.Name,
+			State:      primary.State,
+			CreateTime: timestamppb.New(primary.CreateTime),
+			Algorithm:  primary.Algorithm,
+		},
+		VersionTemplate: cryptoKey.VersionTemplate,
+		Labels:          cryptoKey.Labels,
+	}, nil
+}
+
 // Clear removes all stored data (for testing)
 func (s *Storage) Clear() {
 	s.mu.Lock()

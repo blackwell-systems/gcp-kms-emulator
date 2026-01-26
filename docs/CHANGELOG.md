@@ -10,7 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.1.0] - 2026-01-26
 
 ### Added
-- **Initial Release**: Core KMS functionality with dual protocol support
+- **Initial Release**: Complete key management and lifecycle support with dual protocol
 - **Key Management**:
   - CreateKeyRing: Create keyrings
   - GetKeyRing: Retrieve keyring metadata
@@ -18,14 +18,24 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - CreateCryptoKey: Create crypto keys with automatic version creation
   - GetCryptoKey: Retrieve key metadata
   - ListCryptoKeys: List all crypto keys in a keyring
+  - UpdateCryptoKey: Update key metadata (labels)
 - **Key Versioning**:
   - CreateCryptoKeyVersion: Create new versions for key rotation
+  - GetCryptoKeyVersion: Get specific version details
+  - ListCryptoKeyVersions: List all versions of a key
   - UpdateCryptoKeyPrimaryVersion: Switch active encryption key
+  - UpdateCryptoKeyVersion: Update version state (enable/disable)
+  - DestroyCryptoKeyVersion: Schedule version for destruction
 - **Encryption Operations**:
   - Encrypt: AES-256-GCM symmetric encryption
   - Decrypt: AES-256-GCM symmetric decryption
   - Automatic nonce generation
   - Key version-aware decryption (tries all enabled versions)
+- **Version State Management**:
+  - State transitions: PENDING_GENERATION → ENABLED → DISABLED → DESTROY_SCHEDULED → DESTROYED
+  - Enable/disable versions via UpdateCryptoKeyVersion
+  - Prevent encryption with disabled/destroyed versions
+  - Bidirectional ENABLED ↔ DISABLED transitions
 - **Dual Protocol Support**:
   - Three server variants: `server` (gRPC), `server-rest` (REST), `server-dual` (both)
   - Native gRPC for SDK compatibility
@@ -55,14 +65,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Limitations
 - Only symmetric encryption (ENCRYPT_DECRYPT purpose)
-- No key version management (ListCryptoKeyVersions, GetCryptoKeyVersion)
-- No key lifecycle operations (DestroyCryptoKeyVersion, RestoreCryptoKeyVersion)
-- No asymmetric operations (AsymmetricSign, AsymmetricDecrypt)
+- No key restoration (RestoreCryptoKeyVersion)
+- No asymmetric operations (AsymmetricSign, AsymmetricDecrypt, GetPublicKey)
 - No MAC operations (MacSign, MacVerify)
 - No key import/export (ImportCryptoKeyVersion, CreateImportJob)
+- No raw encryption operations (RawEncrypt, RawDecrypt)
+- No random byte generation (GenerateRandomBytes)
 - CRC32C checksums not implemented
 
-**Coverage:** 9 of ~26 methods (35%) - core encryption + key rotation workflow
+**Coverage:** 14 of ~26 methods (54%) - complete key management + lifecycle
 
 [Unreleased]: https://github.com/blackwell-systems/gcp-kms-emulator/compare/v0.1.0...HEAD
 [0.1.0]: https://github.com/blackwell-systems/gcp-kms-emulator/releases/tag/v0.1.0

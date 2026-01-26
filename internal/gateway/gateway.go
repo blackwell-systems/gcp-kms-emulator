@@ -159,12 +159,35 @@ func (s *Server) handleRequest(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// CryptoKeyVersions operations
+		// CryptoKeyVersions list operations
 		if len(parts) == 9 && parts[4] == "keyRings" && parts[6] == "cryptoKeys" && parts[8] == "cryptoKeyVersions" {
 			cryptoKeyName := fmt.Sprintf("%s/keyRings/%s/cryptoKeys/%s", parent, parts[5], parts[7])
 			switch r.Method {
+			case http.MethodGet:
+				s.listCryptoKeyVersions(ctx, w, r, cryptoKeyName)
 			case http.MethodPost:
 				s.createCryptoKeyVersion(ctx, w, r, cryptoKeyName)
+			default:
+				http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
+			}
+			return
+		}
+
+		// Individual CryptoKeyVersion operations
+		if len(parts) == 10 && parts[4] == "keyRings" && parts[6] == "cryptoKeys" && parts[8] == "cryptoKeyVersions" {
+			versionName := fmt.Sprintf("%s/keyRings/%s/cryptoKeys/%s/cryptoKeyVersions/%s", parent, parts[5], parts[7], parts[9])
+
+			if strings.HasSuffix(parts[9], ":destroy") {
+				versionName = strings.TrimSuffix(versionName, ":destroy")
+				s.destroyCryptoKeyVersion(ctx, w, r, versionName)
+				return
+			}
+
+			switch r.Method {
+			case http.MethodGet:
+				s.getCryptoKeyVersion(ctx, w, r, versionName)
+			case http.MethodPatch:
+				s.updateCryptoKeyVersion(ctx, w, r, versionName)
 			default:
 				http.Error(w, `{"error":"Method not allowed"}`, http.StatusMethodNotAllowed)
 			}
@@ -350,6 +373,71 @@ func (s *Server) updateCryptoKeyPrimaryVersion(ctx context.Context, w http.Respo
 	}
 
 	resp, err := s.grpcClient.UpdateCryptoKeyPrimaryVersion(ctx, req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	writeProtoJSON(w, resp)
+}
+
+func (s *Server) listCryptoKeyVersions(ctx context.Context, w http.ResponseWriter, r *http.Request, parent string) {
+	req := &kmspb.ListCryptoKeyVersionsRequest{
+		Parent:    parent,
+		PageSize:  100,
+		PageToken: r.URL.Query().Get("pageToken"),
+	}
+
+	resp, err := s.grpcClient.ListCryptoKeyVersions(ctx, req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	writeProtoJSON(w, resp)
+}
+
+func (s *Server) getCryptoKeyVersion(ctx context.Context, w http.ResponseWriter, r *http.Request, name string) {
+	req := &kmspb.GetCryptoKeyVersionRequest{Name: name}
+
+	resp, err := s.grpcClient.GetCryptoKeyVersion(ctx, req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusNotFound)
+		return
+	}
+
+	writeProtoJSON(w, resp)
+}
+
+func (s *Server) updateCryptoKeyVersion(ctx context.Context, w http.ResponseWriter, r *http.Request, name string) {
+	body, _ := io.ReadAll(r.Body)
+	defer r.Body.Close()
+
+	var version kmspb.CryptoKeyVersion
+	if err := protojson.Unmarshal(body, &version); err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"Invalid JSON: %v"}`, err), http.StatusBadRequest)
+		return
+	}
+
+	version.Name = name
+
+	req := &kmspb.UpdateCryptoKeyVersionRequest{
+		CryptoKeyVersion: &version,
+	}
+
+	resp, err := s.grpcClient.UpdateCryptoKeyVersion(ctx, req)
+	if err != nil {
+		http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusInternalServerError)
+		return
+	}
+
+	writeProtoJSON(w, resp)
+}
+
+func (s *Server) destroyCryptoKeyVersion(ctx context.Context, w http.ResponseWriter, r *http.Request, name string) {
+	req := &kmspb.DestroyCryptoKeyVersionRequest{Name: name}
+
+	resp, err := s.grpcClient.DestroyCryptoKeyVersion(ctx, req)
 	if err != nil {
 		http.Error(w, fmt.Sprintf(`{"error":"%v"}`, err), http.StatusInternalServerError)
 		return

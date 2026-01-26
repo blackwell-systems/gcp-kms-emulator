@@ -198,11 +198,36 @@ func (s *Server) ListCryptoKeys(ctx context.Context, req *kmspb.ListCryptoKeysRe
 }
 
 func (s *Server) ListCryptoKeyVersions(ctx context.Context, req *kmspb.ListCryptoKeyVersionsRequest) (*kmspb.ListCryptoKeyVersionsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "ListCryptoKeyVersions not implemented yet")
+	if req.Parent == "" {
+		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	}
+
+	versions, err := s.storage.ListCryptoKeyVersions(req.Parent)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return &kmspb.ListCryptoKeyVersionsResponse{
+		CryptoKeyVersions: versions,
+		NextPageToken:     "",
+		TotalSize:         int32(len(versions)),
+	}, nil
 }
 
 func (s *Server) GetCryptoKeyVersion(ctx context.Context, req *kmspb.GetCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	return nil, status.Error(codes.Unimplemented, "GetCryptoKeyVersion not implemented yet")
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+
+	version, err := s.storage.GetCryptoKeyVersion(req.Name)
+	if err != nil {
+		return nil, status.Error(codes.NotFound, err.Error())
+	}
+
+	return version, nil
 }
 
 func (s *Server) CreateCryptoKeyVersion(ctx context.Context, req *kmspb.CreateCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
@@ -222,11 +247,39 @@ func (s *Server) CreateCryptoKeyVersion(ctx context.Context, req *kmspb.CreateCr
 }
 
 func (s *Server) UpdateCryptoKey(ctx context.Context, req *kmspb.UpdateCryptoKeyRequest) (*kmspb.CryptoKey, error) {
-	return nil, status.Error(codes.Unimplemented, "UpdateCryptoKey not implemented yet")
+	if req.CryptoKey == nil || req.CryptoKey.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "crypto_key.name is required")
+	}
+
+	cryptoKey, err := s.storage.UpdateCryptoKey(req.CryptoKey.Name, req.CryptoKey.Labels)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return cryptoKey, nil
 }
 
 func (s *Server) UpdateCryptoKeyVersion(ctx context.Context, req *kmspb.UpdateCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	return nil, status.Error(codes.Unimplemented, "UpdateCryptoKeyVersion not implemented yet")
+	if req.CryptoKeyVersion == nil || req.CryptoKeyVersion.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "crypto_key_version.name is required")
+	}
+
+	if req.CryptoKeyVersion.State == kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_STATE_UNSPECIFIED {
+		return nil, status.Error(codes.InvalidArgument, "crypto_key_version.state is required")
+	}
+
+	version, err := s.storage.UpdateCryptoKeyVersion(req.CryptoKeyVersion.Name, req.CryptoKeyVersion.State)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return version, nil
 }
 
 func (s *Server) UpdateCryptoKeyPrimaryVersion(ctx context.Context, req *kmspb.UpdateCryptoKeyPrimaryVersionRequest) (*kmspb.CryptoKey, error) {
@@ -253,7 +306,22 @@ func (s *Server) UpdateCryptoKeyPrimaryVersion(ctx context.Context, req *kmspb.U
 }
 
 func (s *Server) DestroyCryptoKeyVersion(ctx context.Context, req *kmspb.DestroyCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	return nil, status.Error(codes.Unimplemented, "DestroyCryptoKeyVersion not implemented yet")
+	if req.Name == "" {
+		return nil, status.Error(codes.InvalidArgument, "name is required")
+	}
+
+	version, err := s.storage.DestroyCryptoKeyVersion(req.Name)
+	if err != nil {
+		if strings.Contains(err.Error(), "not found") {
+			return nil, status.Error(codes.NotFound, err.Error())
+		}
+		if strings.Contains(err.Error(), "already destroyed") {
+			return nil, status.Error(codes.FailedPrecondition, err.Error())
+		}
+		return nil, status.Error(codes.Internal, err.Error())
+	}
+
+	return version, nil
 }
 
 func (s *Server) RestoreCryptoKeyVersion(ctx context.Context, req *kmspb.RestoreCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
