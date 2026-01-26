@@ -1,6 +1,6 @@
 module github.com/blackwell-systems/gcp-kms-emulator
 
-go 1.25.5
+go 1.24
 
 require (
 	cloud.google.com/go/kms v1.25.0
