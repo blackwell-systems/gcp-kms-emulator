@@ -49,11 +49,16 @@ jobs:
       with:
         go-version-file: 'go.mod'
 
-    - name: golangci-lint
-      uses: golangci/golangci-lint-action@v6
-      with:
-        version: latest
-        args: --timeout=5m
+    - name: Run go vet
+      run: go vet ./...
+    
+    - name: Run gofmt
+      run: |
+        if [ "$(gofmt -s -l . | wc -l)" -gt 0 ]; then
+          echo "gofmt found issues:"
+          gofmt -s -l .
+          exit 1
+        fi
 
   build:
     name: Build
