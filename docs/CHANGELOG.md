@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-01-26
+
 ### Added
 - **IAM Integration**: Optional permission checks with GCP IAM Emulator
   - Three authorization modes: off (default), permissive (fail-open), strict (fail-closed)
@@ -18,6 +20,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - Docker Compose example with IAM + KMS
 - **Shared Authentication Library**: Uses `gcp-emulator-auth` for standardized IAM integration
 - **Permission Reference**: Complete table of operations → permissions → resource targets in README
+- **FEATURES.md**: Complete feature documentation
 
 ### Changed
 - Server initialization now returns error (for IAM connection failures)
@@ -91,5 +94,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 **Coverage:** 14 of ~26 methods (54%) - complete key management + lifecycle
 
-[Unreleased]: https://github.com/blackwell-systems/gcp-kms-emulator/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/blackwell-systems/gcp-kms-emulator/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/blackwell-systems/gcp-kms-emulator/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/blackwell-systems/gcp-kms-emulator/releases/tag/v0.1.0
