@@ -1,0 +1,38 @@
+# Binaries
+server
+server-rest
+server-dual
+gcp-kms-emulator
+bin/
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test binary
+*.test
+
+# Output
+*.out
+coverage.txt
+*.prof
+
+# Go workspace file
+go.work
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Third-party proto files
+third_party/
+
+# Test client
+test_client

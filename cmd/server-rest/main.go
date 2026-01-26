@@ -1,0 +1,119 @@
+// GCP KMS Emulator - REST API
+//
+// REST/HTTP implementation of Google Cloud KMS API for local testing.
+// This server runs a gRPC backend with an HTTP/REST gateway frontend.
+//
+// Usage:
+//
+//	server-rest --http-port 8080 --grpc-port 9090
+//
+// Environment Variables:
+//
+//	GCP_KMS_HTTP_PORT   - HTTP port to listen on (default: 8080)
+//	GCP_KMS_GRPC_PORT   - gRPC port to listen on (default: 9090)
+//	GCP_KMS_LOG_LEVEL   - Log level: debug, info, warn, error (default: info)
+package main
+
+import (
+	"context"
+	"flag"
+	"fmt"
+	"log"
+	"net"
+	"os"
+	"os/signal"
+	"syscall"
+
+	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
+	"google.golang.org/grpc"
+	"google.golang.org/grpc/reflection"
+
+	"github.com/blackwell-systems/gcp-kms-emulator/internal/gateway"
+	"github.com/blackwell-systems/gcp-kms-emulator/internal/server"
+)
+
+var (
+	httpPort = flag.Int("http-port", getEnvInt("GCP_KMS_HTTP_PORT", 8080), "HTTP port to listen on")
+	grpcPort = flag.Int("grpc-port", getEnvInt("GCP_KMS_GRPC_PORT", 9090), "gRPC port to listen on (internal)")
+	logLevel = flag.String("log-level", getEnv("GCP_KMS_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
+	version  = "0.1.0"
+)
+
+func main() {
+	flag.Parse()
+
+	log.Printf("GCP KMS Emulator v%s (REST API)", version)
+	log.Printf("Starting gRPC backend on port %d", *grpcPort)
+	log.Printf("Starting HTTP gateway on port %d", *httpPort)
+	log.Printf("Log level: %s", *logLevel)
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	// Start gRPC server
+	grpcAddr := fmt.Sprintf("localhost:%d", *grpcPort)
+	lis, err := net.Listen("tcp", grpcAddr)
+	if err != nil {
+		log.Fatalf("Failed to listen on gRPC port: %v", err)
+	}
+
+	grpcServer := grpc.NewServer()
+	kmsServer := server.NewServer()
+	kmspb.RegisterKeyManagementServiceServer(grpcServer, kmsServer)
+	reflection.Register(grpcServer)
+
+	// Start gRPC server in background
+	go func() {
+		log.Printf("gRPC server listening at %v", lis.Addr())
+		if err := grpcServer.Serve(lis); err != nil {
+			log.Fatalf("Failed to serve gRPC: %v", err)
+		}
+	}()
+
+	// Start REST gateway
+	httpAddr := fmt.Sprintf(":%d", *httpPort)
+	gatewayServer := gateway.NewServer(grpcAddr)
+
+	go func() {
+		log.Printf("HTTP gateway listening at %s", httpAddr)
+		log.Printf("Ready to accept REST requests")
+		log.Printf("Example: curl http://localhost:%d/v1/projects/test/locations/global/keyRings", *httpPort)
+		if err := gatewayServer.Start(ctx, httpAddr); err != nil {
+			log.Fatalf("Failed to serve HTTP: %v", err)
+		}
+	}()
+
+	// Wait for interrupt signal
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutting down servers...")
+
+	// Shutdown REST gateway
+	if err := gatewayServer.Stop(ctx); err != nil {
+		log.Printf("Error stopping HTTP gateway: %v", err)
+	}
+
+	// Shutdown gRPC server
+	grpcServer.GracefulStop()
+
+	log.Println("Servers stopped")
+}
+
+func getEnv(key, defaultValue string) string {
+	if value := os.Getenv(key); value != "" {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvInt(key string, defaultValue int) int {
+	if value := os.Getenv(key); value != "" {
+		var intValue int
+		if _, err := fmt.Sscanf(value, "%d", &intValue); err == nil {
+			return intValue
+		}
+	}
+	return defaultValue
+}
