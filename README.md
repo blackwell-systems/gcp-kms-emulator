@@ -9,6 +9,25 @@
 
 A production-grade implementation providing complete, behaviorally-accurate KMS semantics for local development and CI/CD. **Dual protocol support**: Native gRPC + REST/HTTP for maximum flexibility. No GCP credentials or network connectivity required.
 
+## Usage Modes
+
+**Standalone** - Run independently for KMS-only testing:
+```bash
+server-dual
+# Single service, no IAM enforcement
+```
+
+**Orchestrated Ecosystem** - Use with [GCP Emulator Control Plane](https://github.com/blackwell-systems/gcp-emulator-control-plane) for multi-service testing with unified IAM:
+```bash
+gcp-emulator start
+# KMS + Secret Manager + IAM emulator
+# Single policy file, cross-service authorization
+```
+
+**Choose standalone for simple workflows, orchestrated for production-like testing.**
+
+---
+
 ## Features
 
 - **Dual Protocol Support** - Native gRPC + REST/HTTP APIs (choose what fits your workflow)
