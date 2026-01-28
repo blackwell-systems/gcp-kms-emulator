@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Enhanced README with hermetic seal narrative
+  - Explains pre-flight IAM enforcement vs post-hoc observation
+  - Clarifies control plane/data plane architecture
+  - Positions KMS as data plane in Blackwell ecosystem
+
 ## [0.2.0] - 2026-01-26
 
 ### Added
