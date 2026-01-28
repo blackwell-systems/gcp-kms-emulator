@@ -66,7 +66,7 @@ func NewServer() (*Server, error) {
 
 	// Connect to IAM emulator if enabled
 	if config.Mode.IsEnabled() {
-		client, err := emulatorauth.NewClient(config.Host, config.Mode)
+		client, err := emulatorauth.NewClient(config.Host, config.Mode, "gcp-kms-emulator")
 		if err != nil {
 			return nil, fmt.Errorf("failed to connect to IAM emulator: %w", err)
 		}
