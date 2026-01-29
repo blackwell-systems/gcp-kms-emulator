@@ -429,6 +429,25 @@ Maintained by **Dayna Blackwell** — founder of Blackwell Systems, building ref
 - [GCP Secret Manager Emulator](https://github.com/blackwell-systems/gcp-secret-manager-emulator) - IAM-enforced Secret Manager data plane
 - [gcp-emulator-auth](https://github.com/blackwell-systems/gcp-emulator-auth) - Enforcement proxy library (the guard)
 
+---
+
+## Who's Using This?
+
+If you're using this KMS emulator — in CI, locally, or in a test harness — I'd love to hear how you're using it.
+
+- **What crypto bugs did you catch?** (unauthorized encrypt/decrypt, key version issues, IAM policy problems)
+- **Are you using real cryptographic operations?** (testing with actual key material, or mocking crypto)
+- **How are you managing keys?** (versioning, rotation, destruction workflows)
+- **What's still friction?** (missing algorithms, IAM integration complexity, key import limitations)
+
+Open an issue, start a discussion, or reach out directly:
+
+📬 dayna@blackwell-systems.com
+
+This helps shape the roadmap and ensures the project stays aligned with real-world needs.
+
+---
+
 ## License
 
 Apache 2.0 - See [LICENSE](LICENSE) for details.
