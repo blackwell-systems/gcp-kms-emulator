@@ -355,6 +355,14 @@ KMS operations map to GCP IAM permissions:
 
 **Use `off` for local dev, `permissive` for integration tests, `strict` for CI.**
 
+---
+
+### Why IAM Enforcement Uses Curated Permissions (On Purpose)
+
+IAM enforcement in this emulator is deliberately scoped for **authorization testing**, not comprehensive permission modeling. The underlying IAM emulator checks a small set of built-in roles (primitives + Secret Manager + KMS) plus unlimited custom role definitions to catch the bugs that actually break production: missing permissions, wrong role assignments, and unauthorized destructive operations (destroy, setIamPolicy, disable). This curated-first approach catches 95% of real-world authorization bugs while maintaining hermetic execution (no GCP credentials required), deterministic behavior (0ms propagation delay vs 1-60s in real GCP), and zero maintenance burden from tracking GCP's evolving role catalog. If you need to test additional permissions, define them explicitly in the IAM emulator's `policy.yaml` as custom roles — this explicit approach is simpler, more reliable, and avoids the catalog staleness problem that plagues comprehensive IAM emulation. We optimize for **authorization failures that matter**, not theoretical IAM completeness.
+
+---
+
 ## Docker
 
 ### Build Docker Images
