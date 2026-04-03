@@ -17,9 +17,12 @@ func (s *Storage) RawEncrypt(versionName string, plaintext []byte, aad []byte) (
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	version := s.findVersion(versionName)
-	if version == nil {
+	cryptoKey, version := s.findKeyAndVersion(versionName)
+	if cryptoKey == nil {
 		return nil, nil, 0, &ErrNotFound{Resource: versionName}
+	}
+	if cryptoKey.Purpose != kmspb.CryptoKey_RAW_ENCRYPT_DECRYPT {
+		return nil, nil, 0, &ErrFailedPrecondition{Message: "key purpose must be RAW_ENCRYPT_DECRYPT"}
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
@@ -55,9 +58,12 @@ func (s *Storage) RawDecrypt(versionName string, ciphertext []byte, iv []byte, a
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	version := s.findVersion(versionName)
-	if version == nil {
+	cryptoKey, version := s.findKeyAndVersion(versionName)
+	if cryptoKey == nil {
 		return nil, &ErrNotFound{Resource: versionName}
+	}
+	if cryptoKey.Purpose != kmspb.CryptoKey_RAW_ENCRYPT_DECRYPT {
+		return nil, &ErrFailedPrecondition{Message: "key purpose must be RAW_ENCRYPT_DECRYPT"}
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {

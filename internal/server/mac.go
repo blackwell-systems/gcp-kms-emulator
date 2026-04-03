@@ -21,6 +21,9 @@ func (s *Server) MacSign(ctx context.Context, req *kmspb.MacSignRequest) (*kmspb
 	if err := s.checkPermission(ctx, "MacSign", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
 		return nil, err
 	}
+	if err := verifyCRC32C(req.Data, req.DataCrc32C); err != nil {
+		return nil, err
+	}
 
 	mac, err := s.storage.MacSign(req.Name, req.Data)
 	if err != nil {
@@ -47,6 +50,12 @@ func (s *Server) MacVerify(ctx context.Context, req *kmspb.MacVerifyRequest) (*k
 		return nil, status.Error(codes.InvalidArgument, "mac is required")
 	}
 	if err := s.checkPermission(ctx, "MacVerify", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.Data, req.DataCrc32C); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.Mac, req.MacCrc32C); err != nil {
 		return nil, err
 	}
 
