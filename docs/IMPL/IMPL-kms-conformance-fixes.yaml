@@ -1,0 +1,1075 @@
+title: KMS API Conformance Fixes (22 Critical + Minor Issues)
+feature_slug: kms-conformance-fixes
+verdict: SUITABLE
+suitability_assessment: |-
+    All five suitability gate checks pass cleanly.
+
+    1. File decomposition: 8 distinct implementation files split cleanly by layer and domain:
+       - Storage layer (4 files): storage.go, asymmetric.go, mac.go, importjob.go
+       - Server layer (4 files): server.go, asymmetric.go, mac.go, raw.go
+       Each layer is independently ownable; storage agents produce new function signatures
+       consumed by server agents. This is a clean depth-0 / depth-1 DAG.
+
+    2. No investigation-first items: All 22 critical issues are diagnosed with known root
+       causes and precise fixes documented in the conformance report. No unknown crashes or
+       races to reproduce first.
+
+    3. Interface discoverability: Storage function signatures that change are fully
+       determinable from the report:
+       - storage.Encrypt(keyName, plaintext, aad) — adds aad parameter
+       - storage.Decrypt(keyName, ciphertext, aad) — adds aad parameter
+       - storage.CreateCryptoKeyVersion(keyName, reqVersion) — adds reqVersion parameter
+       - storage.UpdateCryptoKey(keyName, key, mask) — replaces labels with full key + mask
+       - storage.UpdateCryptoKeyVersion(versionName, state, mask) — adds mask validation
+       - storage.DestroyCryptoKeyVersion(versionName) — makes idempotent, returns DestroyTime
+       All other storage functions (AsymmetricDecrypt, MacSign, MacVerify) gain algorithm
+       awareness internally without signature changes.
+
+    4. Pre-implementation status: Checked against current codebase. Every critical fix is
+       confirmed TODO (none already done). Minor ProtectionLevel/GenerateTime fields missing
+       on all CryptoKeyVersion responses — also all TODO.
+
+    5. Parallelization value: HIGH. Build+test cycle is ~8-15s for this module. 6 agents
+       (3 storage, 3 server) with 2-5 files each. Wave 1 maximizes parallelism across all
+       storage and most server files simultaneously (they edit disjoint files). Wave 2
+       handles server.go which depends on new storage signatures.
+
+    Estimated times:
+    - Scout phase: ~15 min (dependency mapping, interface contracts, IMPL doc)
+    - Agent execution: ~40 min (Wave 1: 5 agents x ~8 min avg, parallel; Wave 2: 1 agent x ~10 min)
+    - Merge and verification: ~5 min
+    Total SAW time: ~60 min
+
+    Sequential baseline: ~90 min (6 agents x 15 min avg sequential time)
+    Time savings: ~30 min (33% faster)
+
+    Recommendation: Clear speedup with additional benefit of parallel review coverage across
+    separate ownership domains. Proceed.
+test_command: go test ./...
+lint_command: go vet ./...
+file_ownership:
+    - file: internal/storage/storage.go
+      agent: A
+      wave: 1
+      action: modify
+    - file: internal/storage/keymaterial.go
+      agent: A
+      wave: 1
+      action: modify
+    - file: internal/storage/asymmetric.go
+      agent: B
+      wave: 1
+      action: modify
+    - file: internal/storage/mac.go
+      agent: C
+      wave: 1
+      action: modify
+    - file: internal/storage/importjob.go
+      agent: C
+      wave: 1
+      action: modify
+    - file: internal/server/crc32c.go
+      agent: D
+      wave: 1
+      action: modify
+    - file: internal/server/asymmetric.go
+      agent: D
+      wave: 1
+      action: modify
+    - file: internal/server/mac.go
+      agent: E
+      wave: 1
+      action: modify
+    - file: internal/server/raw.go
+      agent: E
+      wave: 1
+      action: modify
+    - file: internal/storage/raw.go
+      agent: E
+      wave: 1
+      action: modify
+    - file: internal/server/server.go
+      agent: F
+      wave: 2
+      action: modify
+      depends_on:
+        - A
+    - file: internal/server/importjob.go
+      agent: F
+      wave: 2
+      action: modify
+      depends_on:
+        - C
+    - file: internal/storage/storage_test.go
+      agent: A
+      wave: 1
+      action: modify
+    - file: internal/storage/storage_conformance_test.go
+      agent: A
+      wave: 1
+      action: new
+    - file: internal/storage/asymmetric_conformance_test.go
+      agent: B
+      wave: 1
+      action: new
+    - file: internal/storage/mac_conformance_test.go
+      agent: C
+      wave: 1
+      action: new
+    - file: conformance_test.go
+      agent: F
+      wave: 2
+      action: new
+      depends_on:
+        - A
+        - B
+        - C
+        - D
+        - E
+interface_contracts:
+    - name: storage.Encrypt
+      description: |-
+        Encrypt now accepts AdditionalAuthenticatedData (aad) and returns
+        both the ciphertext and the version name used, enabling server to
+        populate EncryptResponse.Name with the version name.
+      definition: |-
+        func (s *Storage) Encrypt(keyName string, plaintext []byte, aad []byte) (ciphertext []byte, versionName string, err error)
+        // Purpose validation: must be ENCRYPT_DECRYPT, else ErrFailedPrecondition
+        // Returns versionName = primary version resource name (e.g. ".../cryptoKeyVersions/1")
+        // aad is passed to gcm.Seal as the additionalData parameter
+      location: internal/storage/storage.go
+    - name: storage.Decrypt
+      description: |-
+        Decrypt now accepts AdditionalAuthenticatedData (aad) and returns
+        which version was used (to allow server to set UsedPrimary correctly).
+      definition: |-
+        func (s *Storage) Decrypt(keyName string, ciphertext []byte, aad []byte) (plaintext []byte, usedVersionName string, err error)
+        // Purpose validation: must be ENCRYPT_DECRYPT, else ErrFailedPrecondition
+        // aad is passed to gcm.Open as the additionalData parameter
+        // usedVersionName allows server to compare with PrimaryVersion
+      location: internal/storage/storage.go
+    - name: storage.CreateCryptoKeyVersion
+      description: |-
+        CreateCryptoKeyVersion now accepts the requested version proto so that
+        state and algorithm overrides from the request are honoured.
+      definition: |-
+        func (s *Storage) CreateCryptoKeyVersion(keyName string, req *kmspb.CryptoKeyVersion) (*kmspb.CryptoKeyVersion, error)
+        // req may be nil (backwards-compatible: falls back to key's VersionTemplate)
+        // If req.Algorithm is non-UNSPECIFIED, override the template algorithm
+        // Returns version proto with ProtectionLevel=SOFTWARE, GenerateTime=CreateTime
+      location: internal/storage/storage.go
+    - name: storage.UpdateCryptoKey
+      description: |-
+        UpdateCryptoKey now accepts the full CryptoKey and a FieldMask, applying
+        only the fields listed in the mask.
+      definition: |-
+        func (s *Storage) UpdateCryptoKey(keyName string, key *kmspb.CryptoKey, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKey, error)
+        // Supported mask paths: "labels", "rotation_period", "next_rotation_time",
+        //   "version_template", "destroy_scheduled_duration"
+        // Unrecognised paths are silently ignored (match real API behaviour)
+      location: internal/storage/storage.go
+    - name: storage.UpdateCryptoKeyVersion
+      description: |-
+        UpdateCryptoKeyVersion now validates the update_mask and enforces state
+        transition rules: only ENABLED<->DISABLED transitions permitted.
+      definition: |-
+        func (s *Storage) UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoKeyVersion_CryptoKeyVersionState, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKeyVersion, error)
+        // Validates mask contains "state" before applying
+        // Enforces: source must be ENABLED or DISABLED
+        //           target must be ENABLED or DISABLED
+        //           no other state transitions permitted via this method
+      location: internal/storage/storage.go
+    - name: storage.DestroyCryptoKeyVersion
+      description: |-
+        DestroyCryptoKeyVersion is now idempotent for DESTROY_SCHEDULED versions
+        and sets DestroyTime on the returned proto.
+      definition: |-
+        func (s *Storage) DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersion, error)
+        // If state == DESTROY_SCHEDULED: return version as-is (idempotent, no error)
+        // If state == DESTROYED: return ErrFailedPrecondition (unchanged)
+        // On transition: set DestroyTime = now + 30 days; persist on StoredCryptoKeyVersion
+        // StoredCryptoKeyVersion gains DestroyTime time.Time field
+      location: internal/storage/storage.go
+    - name: storage.AsymmetricDecrypt
+      description: AsymmetricDecrypt now selects the OAEP hash based on the version algorithm.
+      definition: |-
+        func (s *Storage) AsymmetricDecrypt(versionName string, ciphertext []byte) ([]byte, error)
+        // Signature unchanged; internal change: select hash from algorithm
+        // RSA_DECRYPT_OAEP_*_SHA1   -> sha1.New()
+        // RSA_DECRYPT_OAEP_*_SHA256 -> sha256.New()
+        // RSA_DECRYPT_OAEP_*_SHA512 -> sha512.New()
+      location: internal/storage/asymmetric.go
+    - name: storage.AsymmetricSign
+      description: |-
+        AsymmetricSign now accepts optional rawData for direct signing
+        (hashing internally) in addition to pre-hashed digest.
+      definition: |-
+        func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType string, rawData []byte) ([]byte, error)
+        // rawData: if non-nil, hash with algorithm's hash then sign (data field support)
+        // digest/digestType: used when rawData is nil (existing behaviour)
+        // Purpose validation: parent key must be ASYMMETRIC_SIGN
+      location: internal/storage/asymmetric.go
+    - name: storage.MacSign
+      description: MacSign now selects the HMAC hash based on the key version algorithm.
+      definition: |-
+        func (s *Storage) MacSign(versionName string, data []byte) ([]byte, error)
+        // Signature unchanged; internal change: select hash from version.Algorithm
+        // HMAC_SHA1   -> sha1.New
+        // HMAC_SHA224 -> sha256.New (sha224 via sha256.New224)
+        // HMAC_SHA256 -> sha256.New  (existing)
+        // HMAC_SHA384 -> sha512.New384
+        // HMAC_SHA512 -> sha512.New
+        // Purpose validation: parent key must be MAC
+      location: internal/storage/mac.go
+    - name: storage.MacVerify
+      description: MacVerify now selects the HMAC hash based on the key version algorithm.
+      definition: |-
+        func (s *Storage) MacVerify(versionName string, data []byte, mac []byte) (bool, error)
+        // Signature unchanged; internal change: same hash selection as MacSign
+        // Purpose validation: parent key must be MAC
+      location: internal/storage/mac.go
+    - name: storage.findKeyAndVersion
+      description: |-
+        New helper that returns both the parent StoredCryptoKey and the
+        StoredCryptoKeyVersion for a version resource name. Required by all
+        purpose-validation paths (asymmetric, mac, raw ops).
+      definition: |-
+        func (s *Storage) findKeyAndVersion(versionName string) (*StoredCryptoKey, *StoredCryptoKeyVersion)
+        // Caller must hold at least s.mu.RLock
+        // Returns (nil, nil) if not found
+      location: internal/storage/asymmetric.go
+    - name: verifyCRC32C (server-layer helper)
+      description: |-
+        New server-layer helper for CRC32C input verification. Returns
+        codes.DataLoss (for Encrypt/Decrypt/Raw) or codes.InvalidArgument
+        per-method. Using DataLoss matches the real API for encrypted data
+        integrity checks; server methods use appropriate code per-context.
+      definition: |-
+        func verifyCRC32C(data []byte, provided *wrapperspb.Int64Value) error
+        // If provided is nil: return nil (no verification requested)
+        // Compute crc32c(data); compare to provided.Value
+        // On mismatch: return status.Error(codes.InvalidArgument, "request corrupted in transit")
+        // Located in internal/server/crc32c.go (extend existing file)
+      location: internal/server/crc32c.go
+waves:
+    - number: 1
+      agents:
+        - id: A
+          task: |-
+            ## Role
+            Storage layer: symmetric encrypt/decrypt, key CRUD, and key generation fixes.
+
+            ## What to implement
+
+            ### 1. StoredCryptoKeyVersion: add DestroyTime field
+            In `internal/storage/storage.go`, add `DestroyTime time.Time` to the
+            `StoredCryptoKeyVersion` struct.
+
+            ### 2. storage.Encrypt — new signature
+            Change the signature to:
+            ```go
+            func (s *Storage) Encrypt(keyName string, plaintext []byte, aad []byte) (ciphertext []byte, versionName string, err error)
+            ```
+            - Validate `cryptoKey.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT`; if not,
+              return `&ErrFailedPrecondition{Message: "key purpose must be ENCRYPT_DECRYPT"}`.
+            - Pass `aad` to `gcm.Seal(nonce, nonce, plaintext, aad)`.
+            - Return `cryptoKey.PrimaryVersion` as the second return value.
+
+            ### 3. storage.Decrypt — new signature
+            Change the signature to:
+            ```go
+            func (s *Storage) Decrypt(keyName string, ciphertext []byte, aad []byte) (plaintext []byte, usedVersionName string, err error)
+            ```
+            - Validate `cryptoKey.Purpose == kmspb.CryptoKey_ENCRYPT_DECRYPT`.
+            - Pass `aad` to `gcm.Open(nil, nonce, ciphertext, aad)` inside `decryptWithVersion`.
+              Update the private helper: `func (s *Storage) decryptWithVersion(version *StoredCryptoKeyVersion, ciphertext []byte, aad []byte) ([]byte, error)`.
+            - Track which version succeeded; return its Name as `usedVersionName`.
+
+            ### 4. storage.UpdateCryptoKey — new signature
+            Change the signature to:
+            ```go
+            func (s *Storage) UpdateCryptoKey(keyName string, key *kmspb.CryptoKey, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKey, error)
+            ```
+            Import `google.golang.org/protobuf/types/known/fieldmaskpb`.
+            Implement field-by-field update logic:
+            - `"labels"` → replace `cryptoKey.Labels` with `key.Labels`
+            - `"rotation_period"` → set `cryptoKey.RotationPeriod` (add field to StoredCryptoKey if needed)
+            - `"next_rotation_time"` → set `cryptoKey.NextRotationTime`
+            - `"version_template"` → replace `cryptoKey.VersionTemplate`
+            - `"destroy_scheduled_duration"` → set `cryptoKey.DestroyScheduledDuration`
+            Add the corresponding fields to `StoredCryptoKey` if they do not exist:
+            `RotationPeriod *durationpb.Duration`, `NextRotationTime *timestamppb.Timestamp`,
+            `DestroyScheduledDuration *durationpb.Duration`.
+            Import `google.golang.org/protobuf/types/known/durationpb`.
+            Populate all added fields in the `*kmspb.CryptoKey` return value.
+
+            ### 5. storage.UpdateCryptoKeyVersion — validate mask + state transitions
+            Change the signature to:
+            ```go
+            func (s *Storage) UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoKeyVersion_CryptoKeyVersionState, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKeyVersion, error)
+            ```
+            - If mask is non-nil and `"state"` is not in `mask.Paths`, return
+              `ErrFailedPrecondition{"update_mask must contain state"}`.
+            - Validate current state: source must be ENABLED or DISABLED.
+            - Validate target state: must be ENABLED or DISABLED.
+            - If either check fails, return `ErrFailedPrecondition` with a descriptive message.
+
+            ### 6. storage.DestroyCryptoKeyVersion — idempotent + DestroyTime
+            - If `version.State == kmspb.CryptoKeyVersion_DESTROY_SCHEDULED`:
+              return the version as-is (no error, idempotent). Populate `DestroyTime`
+              from the stored field.
+            - On a new destruction:
+              `version.DestroyTime = time.Now().Add(30 * 24 * time.Hour)`
+              `version.State = kmspb.CryptoKeyVersion_DESTROY_SCHEDULED`
+            - Include `DestroyTime: timestamppb.New(version.DestroyTime)` in all
+              CryptoKeyVersion proto returns from this function.
+
+            ### 7. storage.CreateCryptoKeyVersion — accept req parameter
+            Change the signature to:
+            ```go
+            func (s *Storage) CreateCryptoKeyVersion(keyName string, req *kmspb.CryptoKeyVersion) (*kmspb.CryptoKeyVersion, error)
+            ```
+            - If `req != nil && req.Algorithm != UNSPECIFIED`, override the template algorithm.
+            - Populate `ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE` and
+              `GenerateTime: timestamppb.New(now)` on the returned CryptoKeyVersion proto.
+
+            ### 8. storage.CreateCryptoKey — reject UNSPECIFIED purpose + defaults
+            - Return `&ErrFailedPrecondition{Message: "crypto_key.purpose is required"}` when
+              purpose is `CRYPTO_KEY_PURPOSE_UNSPECIFIED`. (Server will map to InvalidArgument.)
+            - Set `DestroyScheduledDuration` to 30 days on `StoredCryptoKey`.
+            - Populate `ProtectionLevel=SOFTWARE`, `GenerateTime` on the Primary version proto.
+
+            ### 9. storage.ListKeyRings — filter by parent prefix
+            In `ListKeyRings(parent string)`, only include keyrings whose name has prefix
+            `parent + "/keyRings/"`.
+
+            ### 10. keymaterial.go — add missing HMAC algorithm key sizes
+            In `generateKeyMaterial`, add cases for:
+            - `HMAC_SHA1`: generate 20-byte key
+            - `HMAC_SHA224`: generate 28-byte key
+            - `HMAC_SHA384`: generate 48-byte key
+            - `HMAC_SHA512`: generate 64-byte key
+
+            Also add `AES_128_GCM` case (16-byte symmetric key).
+
+            ### 11. All CryptoKeyVersion proto responses — populate ProtectionLevel + GenerateTime
+            In `storage.go`, in every place a `*kmspb.CryptoKeyVersion` proto is constructed
+            (GetCryptoKeyVersion, ListCryptoKeyVersions, UpdateCryptoKeyVersion,
+            UpdateCryptoKeyPrimaryVersion, RestoreCryptoKeyVersion), add:
+            ```go
+            ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+            GenerateTime:    timestamppb.New(version.CreateTime),
+            ```
+
+            ## Tests
+            Create `internal/storage/storage_conformance_test.go` (package `storage`) with
+            tests for:
+            - `TestEncrypt_AAD`: encrypt with aad, verify decrypt with same aad succeeds;
+              decrypt with different aad fails.
+            - `TestEncrypt_PurposeCheck`: create MAC-purpose key, call Encrypt, expect
+              ErrFailedPrecondition.
+            - `TestEncrypt_ReturnsVersionName`: check second return value is a version name
+              containing "cryptoKeyVersions/".
+            - `TestDecrypt_PurposeCheck`: same for Decrypt.
+            - `TestUpdateCryptoKey_Mask`: update only "labels", verify other fields unchanged.
+            - `TestUpdateCryptoKeyVersion_StateTransition`: ENABLED→DISABLED ok;
+              ENABLED→DESTROY_SCHEDULED fails; DESTROY_SCHEDULED→ENABLED fails.
+            - `TestDestroyCryptoKeyVersion_Idempotent`: destroy twice, expect no error on second.
+            - `TestDestroyCryptoKeyVersion_DestroyTime`: verify DestroyTime is non-zero on response.
+            - `TestCreateCryptoKey_UnspecifiedPurpose`: expect error.
+            - `TestCreateCryptoKeyVersion_AlgorithmOverride`: pass req with HMAC_SHA384, verify version.Algorithm.
+
+            ## Verification gate
+            ```
+            go build ./internal/storage/...
+            go vet ./internal/storage/...
+            go test ./internal/storage/...
+            ```
+
+            ## Constraints
+            - Do not modify any server-layer files.
+            - Do not modify asymmetric.go, mac.go, or importjob.go in the storage package.
+            - The `decryptWithVersion` helper is private to storage.go; update its signature
+              to accept aad and update all call sites within the file.
+            - Import `fieldmaskpb` only in storage.go, not in other storage files.
+            - `StoredCryptoKey` struct fields added: `RotationPeriod`, `NextRotationTime`,
+              `DestroyScheduledDuration`, `DestroyScheduledDurationDefault` (set to 30*24h on create).
+            - You MUST also update internal/storage/storage_test.go to fix existing call sites
+              that break due to signature changes:
+              - `s.Encrypt(...)` changes from `([]byte, error)` to `([]byte, string, error)` —
+                update all 2-value assignments (lines ~234, 343, 361, 408) to 3-value
+              - `s.Decrypt(...)` changes from `([]byte, error)` to `([]byte, string, error)` —
+                update all 2-value assignments (lines ~243, 366, 375, 413) to 3-value
+              - `s.CreateCryptoKeyVersion(keyName)` adds a second `req *kmspb.CryptoKeyVersion`
+                parameter — update all 1-argument calls (lines ~272, 305, 348) to pass `nil`
+                as the second argument.
+          files:
+            - internal/storage/storage.go
+            - internal/storage/keymaterial.go
+            - internal/storage/storage_test.go
+            - internal/storage/storage_conformance_test.go
+        - id: B
+          task: |-
+            ## Role
+            Storage layer: asymmetric sign and decrypt fixes.
+
+            ## What to implement
+
+            ### 1. storage.findKeyAndVersion — new helper
+            Add to `internal/storage/asymmetric.go`:
+            ```go
+            func (s *Storage) findKeyAndVersion(versionName string) (*StoredCryptoKey, *StoredCryptoKeyVersion)
+            ```
+            Iterate `s.keyrings` and their `CryptoKeys`; return the parent `StoredCryptoKey`
+            and the `StoredCryptoKeyVersion` together when the version name matches.
+            Returns `(nil, nil)` if not found. Caller holds at least `s.mu.RLock`.
+
+            Replace all calls to `s.findVersion(versionName)` in asymmetric.go with
+            `s.findKeyAndVersion(versionName)` and use the returned key for purpose checks.
+
+            ### 2. AsymmetricSign — purpose validation + data field support
+            Change the signature to:
+            ```go
+            func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType string, rawData []byte) ([]byte, error)
+            ```
+            - Add purpose check: `cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_SIGN` →
+              `ErrFailedPrecondition{"key purpose must be ASYMMETRIC_SIGN"}`.
+            - If `rawData != nil`:
+              - Derive the hash function from the version algorithm:
+                - EC_SIGN_P256_SHA256, RSA_SIGN_PKCS1_2048_SHA256, RSA_SIGN_PKCS1_3072_SHA256,
+                  RSA_SIGN_PKCS1_4096_SHA256 → SHA-256
+                - EC_SIGN_P384_SHA384 → SHA-384
+                - RSA_SIGN_PKCS1_4096_SHA512 → SHA-512
+              - Hash `rawData` internally; use the result as `digest`.
+              - Set `digestType` accordingly.
+            - Existing digest-based path is unchanged when `rawData` is nil.
+
+            ### 3. AsymmetricDecrypt — purpose validation + OAEP hash selection
+            - Add purpose check using `findKeyAndVersion`: `cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_DECRYPT` →
+              `ErrFailedPrecondition{"key purpose must be ASYMMETRIC_DECRYPT"}`.
+            - Replace hardcoded `sha256.New()` with a helper `oaepHashFromAlgorithm`:
+              ```go
+              func oaepHashFromAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) hash.Hash
+              ```
+              - `*_SHA1`   → `sha1.New()`
+              - `*_SHA256` → `sha256.New()`
+              - `*_SHA512` → `sha512.New()`
+            - Pass the result to `rsa.DecryptOAEP(oaepHashFromAlgorithm(version.Algorithm), ...)`.
+
+            ### 4. GetPublicKey — purpose validation + allow DISABLED
+            - Add purpose check: `cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_SIGN &&
+              cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_DECRYPT` →
+              `ErrFailedPrecondition{"key purpose must be ASYMMETRIC_SIGN or ASYMMETRIC_DECRYPT"}`.
+            - Remove the ENABLED state check (allow DISABLED versions to return their public key).
+              Keep the check that version exists and has AsymmetricKey material.
+
+            ## Tests
+            Create `internal/storage/asymmetric_conformance_test.go` (package `storage`) with:
+            - `TestAsymmetricSign_PurposeCheck`: create ENCRYPT_DECRYPT key with RSA algorithm,
+              call AsymmetricSign, expect ErrFailedPrecondition.
+            - `TestAsymmetricSign_DataField`: create ASYMMETRIC_SIGN key, call AsymmetricSign
+              with rawData set and digest/digestType empty, verify signature is valid.
+            - `TestAsymmetricDecrypt_PurposeCheck`: create ASYMMETRIC_SIGN key, call
+              AsymmetricDecrypt, expect ErrFailedPrecondition.
+            - `TestAsymmetricDecrypt_SHA1Hash`: create RSA_DECRYPT_OAEP_2048_SHA1 key, encrypt
+              with sha1 OAEP using the public key, then decrypt via storage — expect success.
+            - `TestAsymmetricDecrypt_SHA512Hash`: same for RSA_DECRYPT_OAEP_4096_SHA512.
+            - `TestGetPublicKey_AllowDisabled`: create key, disable the version via direct
+              state manipulation, call GetPublicKey, expect success.
+            - `TestGetPublicKey_PurposeCheck`: create ENCRYPT_DECRYPT key without asymmetric
+              material, call GetPublicKey, expect ErrFailedPrecondition.
+
+            ## Verification gate
+            ```
+            go build ./internal/storage/...
+            go vet ./internal/storage/...
+            go test ./internal/storage/...
+            ```
+
+            ## Constraints
+            - Do not modify storage.go, mac.go, importjob.go, or keymaterial.go.
+            - Add imports for `crypto/sha1`, `crypto/sha512`, `hash` as needed.
+            - The `findVersion` helper in asymmetric.go is still used by mac.go and raw.go
+              (they don't import asymmetric.go, they are in the same package). Keep
+              `findVersion` as-is; `findKeyAndVersion` is a new addition that calls the
+              same iteration pattern.
+            - Do not change AsymmetricSign caller in mac.go or raw.go — those are handled
+              by Agent C and remain on the same package, but this agent only edits asymmetric.go.
+          files:
+            - internal/storage/asymmetric.go
+            - internal/storage/asymmetric_conformance_test.go
+        - id: C
+          task: |-
+            ## Role
+            Storage layer: MAC algorithm dispatch + ImportCryptoKeyVersion validation.
+
+            ## What to implement
+
+            ### 1. mac.go — purpose validation + algorithm-based hash selection
+
+            In `internal/storage/mac.go`, both `MacSign` and `MacVerify` need two changes:
+
+            **a. Purpose validation**
+            Replace `s.findVersion(versionName)` with `s.findKeyAndVersion(versionName)`:
+            ```go
+            cryptoKey, version := s.findKeyAndVersion(versionName)
+            if cryptoKey == nil {
+                return ..., &ErrNotFound{Resource: versionName}
+            }
+            if cryptoKey.Purpose != kmspb.CryptoKey_MAC {
+                return ..., &ErrFailedPrecondition{Message: "key purpose must be MAC"}
+            }
+            ```
+            Note: `findKeyAndVersion` is defined in asymmetric.go in the same `storage`
+            package — it is accessible here without import.
+
+            **b. Algorithm-based hash selection**
+            Replace the hardcoded `hmac.New(sha256.New, version.HMACKey)` with a call to
+            a new helper `hmacHashFuncFromAlgorithm`:
+            ```go
+            func hmacHashFuncFromAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) func() hash.Hash
+            ```
+            Mapping:
+            - `HMAC_SHA1`   → `sha1.New`
+            - `HMAC_SHA224` → `sha256.New224`
+            - `HMAC_SHA256` → `sha256.New`  (existing behaviour)
+            - `HMAC_SHA384` → `sha512.New384`
+            - `HMAC_SHA512` → `sha512.New`
+            - default → `sha256.New` (safe fallback, should not be reached)
+
+            Apply this in both `MacSign` and `MacVerify`:
+            ```go
+            h := hmac.New(hmacHashFuncFromAlgorithm(version.Algorithm), version.HMACKey)
+            ```
+
+            ### 2. importjob.go — validate algorithm not UNSPECIFIED
+            In `ImportCryptoKeyVersion`, add after the import job active check:
+            ```go
+            if kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm(algorithm) ==
+                kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED {
+                return nil, &ErrFailedPrecondition{Message: "algorithm is required"}
+            }
+            ```
+            (Server will translate ErrFailedPrecondition to codes.InvalidArgument for this case;
+            server agent F will handle the mapping adjustment if needed.)
+
+            ## Tests
+            Create `internal/storage/mac_conformance_test.go` (package `storage`) with:
+            - `TestMacSign_PurposeCheck`: create ENCRYPT_DECRYPT key with HMAC material
+              (manually set HMACKey on the stored version), call MacSign, expect ErrFailedPrecondition.
+              Use a storage instance, create a proper MAC-purpose key, change its purpose
+              to something else via direct struct access after creation.
+            - `TestMacSign_SHA1Algorithm`: create MAC key with HMAC_SHA1 algorithm
+              (requires keymaterial.go HMAC_SHA1 case from Agent A). Call MacSign and MacVerify,
+              verify the returned HMAC is 20 bytes (SHA-1 output size).
+            - `TestMacSign_SHA384Algorithm`: same for HMAC_SHA384, expect 48-byte output.
+            - `TestMacSign_SHA512Algorithm`: same for HMAC_SHA512, expect 64-byte output.
+            - `TestMacVerify_PurposeCheck`: same purpose mismatch test for MacVerify.
+            - `TestImportCryptoKeyVersion_UnspecifiedAlgorithm`: call ImportCryptoKeyVersion
+              with algorithm=UNSPECIFIED, expect error.
+
+            ## Verification gate
+            ```
+            go build ./internal/storage/...
+            go vet ./internal/storage/...
+            go test ./internal/storage/...
+            ```
+
+            ## Constraints
+            - Do not modify storage.go, asymmetric.go, or keymaterial.go.
+            - Add imports: `crypto/sha1`, `crypto/sha512`, `hash` to mac.go.
+            - `hmacHashFuncFromAlgorithm` must be defined in mac.go.
+            - For mac_conformance_test.go: to set an HMAC_SHA1 key, you MUST first ensure
+              Agent A has added the HMAC_SHA1 case to keymaterial.go. The test will be compiled
+              alongside Agent A's changes post-merge. If you need to create HMAC_SHA1 material
+              directly in a test, generate a raw 20-byte key and assign it manually to
+              `StoredCryptoKeyVersion.HMACKey`.
+          files:
+            - internal/storage/mac.go
+            - internal/storage/importjob.go
+            - internal/storage/mac_conformance_test.go
+        - id: D
+          task: |-
+            ## Role
+            Server layer: CRC32C verification helper + AsymmetricSign/Decrypt/GetPublicKey fixes.
+
+            ## What to implement
+
+            ### 1. internal/server/crc32c.go — add verifyCRC32C helper
+            Add to the existing `internal/server/crc32c.go`:
+            ```go
+            // verifyCRC32C verifies a CRC32C checksum against data if provided.
+            // Returns status.Error(codes.InvalidArgument, "request corrupted in transit")
+            // on mismatch. Returns nil if provided is nil (no check requested).
+            func verifyCRC32C(data []byte, provided *wrapperspb.Int64Value) error {
+                if provided == nil {
+                    return nil
+                }
+                computed := int64(crc32.Checksum(data, crc32cTable))
+                if computed != provided.Value {
+                    return status.Error(codes.InvalidArgument, "request corrupted in transit")
+                }
+                return nil
+            }
+            ```
+            Add required imports: `"google.golang.org/grpc/codes"`, `"google.golang.org/grpc/status"`,
+            `"google.golang.org/protobuf/types/known/wrapperspb"`.
+
+            ### 2. internal/server/asymmetric.go — CRC32C verification + data field
+
+            **AsymmetricSign:**
+            - Add CRC32C verification before calling storage:
+              ```go
+              // Verify CRC32C if provided
+              if req.Digest != nil {
+                  var digestBytes []byte
+                  // ... existing digest extraction ...
+                  if err := verifyCRC32C(digestBytes, req.DigestCrc32C); err != nil {
+                      return nil, err
+                  }
+              }
+              if req.Data != nil {
+                  if err := verifyCRC32C(req.Data, req.DataCrc32C); err != nil {
+                      return nil, err
+                  }
+              }
+              ```
+            - Support `req.Data` field: if `req.Digest == nil && len(req.Data) > 0`, pass
+              `rawData=req.Data` to `s.storage.AsymmetricSign(req.Name, nil, "", req.Data)`.
+              Otherwise pass `rawData=nil` with existing digest bytes.
+            - Remove the `if req.Digest == nil { return nil, error }` guard; replace with:
+              ```go
+              if req.Digest == nil && len(req.Data) == 0 {
+                  return nil, status.Error(codes.InvalidArgument, "either digest or data is required")
+              }
+              ```
+            - In the response, set `VerifiedDataCrc32C: req.Data != nil && req.DataCrc32C != nil`.
+
+            **AsymmetricDecrypt:**
+            - Add CRC32C verification:
+              ```go
+              if err := verifyCRC32C(req.Ciphertext, req.CiphertextCrc32C); err != nil {
+                  return nil, err
+              }
+              ```
+
+            **GetPublicKey:**
+            - Purpose validation is now enforced in the storage layer (Agent B). No server
+              changes needed for purpose check here; the ErrFailedPrecondition from storage
+              maps through storageErr() to codes.FailedPrecondition automatically.
+            - The DISABLED state change (allow DISABLED) is in the storage layer (Agent B).
+
+            ## Tests
+            No new test file for this agent — integration tests covering these server-layer
+            paths are in `conformance_test.go` owned by Agent F in Wave 2.
+
+            ## Verification gate
+            ```
+            go build ./internal/server/...
+            go vet ./internal/server/...
+            ```
+            Note: full test run requires Agent A's storage changes (Wave 2 will run full suite).
+            Build-only gate is sufficient for Wave 1 server agents.
+
+            ## Constraints
+            - Do not modify server.go, mac.go (server), or raw.go (server).
+            - The new `AsymmetricSign` storage signature (4 params) is defined in the interface
+              contracts. Call it as:
+              `s.storage.AsymmetricSign(req.Name, digestBytes, digestType, nil)` when using digest.
+              `s.storage.AsymmetricSign(req.Name, nil, "", req.Data)` when using data.
+            - Add `"google.golang.org/protobuf/types/known/wrapperspb"` import to crc32c.go only.
+              The wrapperspb import for method parameters in asymmetric.go already comes from kmspb.
+          files:
+            - internal/server/crc32c.go
+            - internal/server/asymmetric.go
+        - id: E
+          task: |-
+            ## Role
+            Server layer: MacSign/MacVerify and RawEncrypt/RawDecrypt CRC32C verification.
+
+            ## What to implement
+
+            ### 1. internal/server/mac.go — CRC32C verification
+
+            **MacSign:**
+            Add before calling storage:
+            ```go
+            if err := verifyCRC32C(req.Data, req.DataCrc32C); err != nil {
+                return nil, err
+            }
+            ```
+
+            **MacVerify:**
+            Add before calling storage:
+            ```go
+            if err := verifyCRC32C(req.Data, req.DataCrc32C); err != nil {
+                return nil, err
+            }
+            if err := verifyCRC32C(req.Mac, req.MacCrc32C); err != nil {
+                return nil, err
+            }
+            ```
+
+            Note: `verifyCRC32C` is defined in `internal/server/crc32c.go` by Agent D,
+            same package — accessible without import.
+
+            ### 2. internal/server/raw.go — CRC32C verification + purpose validation note
+
+            **RawEncrypt:**
+            Add before calling storage:
+            ```go
+            if err := verifyCRC32C(req.Plaintext, req.PlaintextCrc32C); err != nil {
+                return nil, err
+            }
+            if err := verifyCRC32C(req.AdditionalAuthenticatedData, req.AdditionalAuthenticatedDataCrc32C); err != nil {
+                return nil, err
+            }
+            if err := verifyCRC32C(req.InitializationVector, req.InitializationVectorCrc32C); err != nil {
+                return nil, err
+            }
+            ```
+            Purpose validation (RAW_ENCRYPT_DECRYPT) is enforced in the storage layer
+            (Agent A adds it via findKeyAndVersion pattern in raw.go — but raw.go is in
+            the storage package and Agent A does NOT own storage/raw.go).
+
+            IMPORTANT: `internal/storage/raw.go` is NOT in this agent's ownership and is NOT
+            owned by any agent in Wave 1. Add purpose validation to `storage.RawEncrypt` and
+            `storage.RawDecrypt` directly in `internal/storage/raw.go` as part of this task.
+            This file is small (88 lines) and the change is a single purpose-check block added
+            after the version lookup.
+
+            Add to `internal/storage/raw.go`:
+            - After `version := s.findVersion(versionName)` in both RawEncrypt and RawDecrypt,
+              find the parent key using `findKeyAndVersion` and validate:
+              ```go
+              cryptoKey, version := s.findKeyAndVersion(versionName)
+              if cryptoKey == nil {
+                  return ..., &ErrNotFound{Resource: versionName}
+              }
+              if cryptoKey.Purpose != kmspb.CryptoKey_RAW_ENCRYPT_DECRYPT {
+                  return ..., &ErrFailedPrecondition{Message: "key purpose must be RAW_ENCRYPT_DECRYPT"}
+              }
+              ```
+            - Replace the existing `version := s.findVersion(versionName)` calls in raw.go
+              with the above pattern.
+
+            **RawDecrypt:**
+            Add the same CRC32C verification as RawEncrypt for `req.Ciphertext`, `req.AdditionalAuthenticatedData`,
+            and `req.InitializationVector`.
+
+            ## Verification gate
+            ```
+            go build ./internal/server/...
+            go build ./internal/storage/...
+            go vet ./internal/server/...
+            go vet ./internal/storage/...
+            ```
+
+            ## Constraints
+            - You own: `internal/server/mac.go`, `internal/server/raw.go`.
+            - You also make one targeted change to `internal/storage/raw.go` for purpose
+              validation only (replacing findVersion with findKeyAndVersion pattern).
+            - Do NOT modify server.go, asymmetric.go (server), crc32c.go (owned by D),
+              or any other storage files.
+            - `findKeyAndVersion` is defined by Agent B in asymmetric.go (same package).
+              Since this is a compile-time dependency within the same package, write the
+              call as if it exists — it will be present after Wave 1 merge.
+          files:
+            - internal/server/mac.go
+            - internal/server/raw.go
+            - internal/storage/raw.go
+    - number: 2
+      agents:
+        - id: F
+          task: |-
+            ## Role
+            Server layer: server.go and importjob.go — wires all storage signature changes,
+            purpose validation, CRC32C, and integration tests.
+
+            ## Prerequisites
+            Wave 1 has completed. The following storage signatures have changed:
+            - `storage.Encrypt(keyName, plaintext, aad) ([]byte, string, error)`
+            - `storage.Decrypt(keyName, ciphertext, aad) ([]byte, string, error)`
+            - `storage.CreateCryptoKeyVersion(keyName string, req *kmspb.CryptoKeyVersion) (*kmspb.CryptoKeyVersion, error)`
+            - `storage.UpdateCryptoKey(keyName string, key *kmspb.CryptoKey, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKey, error)`
+            - `storage.UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoKeyVersion_CryptoKeyVersionState, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKeyVersion, error)`
+            - `storage.DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersion, error)` (returns DestroyTime)
+            - `storage.AsymmetricSign(versionName string, digest []byte, digestType string, rawData []byte) ([]byte, error)`
+
+            ## What to implement in internal/server/server.go
+
+            ### 1. Encrypt — wire AAD + CRC32C + version name response
+            ```go
+            func (s *Server) Encrypt(ctx context.Context, req *kmspb.EncryptRequest) (*kmspb.EncryptResponse, error) {
+                // ... existing field checks ...
+                if err := verifyCRC32C(req.Plaintext, req.PlaintextCrc32C); err != nil {
+                    return nil, err
+                }
+                if err := verifyCRC32C(req.AdditionalAuthenticatedData, req.AdditionalAuthenticatedDataCrc32C); err != nil {
+                    return nil, err
+                }
+                ciphertext, versionName, err := s.storage.Encrypt(req.Name, req.Plaintext, req.AdditionalAuthenticatedData)
+                if err != nil {
+                    return nil, storageErr(err)
+                }
+                return &kmspb.EncryptResponse{
+                    Name:                    versionName,  // version name, not key name
+                    Ciphertext:              ciphertext,
+                    CiphertextCrc32C:        crc32cValue(ciphertext),
+                    VerifiedPlaintextCrc32C: req.PlaintextCrc32C != nil,
+                    VerifiedAdditionalAuthenticatedDataCrc32C: req.AdditionalAuthenticatedDataCrc32C != nil,
+                    ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+                }, nil
+            }
+            ```
+
+            ### 2. Decrypt — wire AAD + CRC32C + UsedPrimary
+            ```go
+            func (s *Server) Decrypt(ctx context.Context, req *kmspb.DecryptRequest) (*kmspb.DecryptResponse, error) {
+                // ... existing field checks ...
+                if err := verifyCRC32C(req.Ciphertext, req.CiphertextCrc32C); err != nil {
+                    return nil, err
+                }
+                if err := verifyCRC32C(req.AdditionalAuthenticatedData, req.AdditionalAuthenticatedDataCrc32C); err != nil {
+                    return nil, err
+                }
+                plaintext, usedVersionName, err := s.storage.Decrypt(req.Name, req.Ciphertext, req.AdditionalAuthenticatedData)
+                if err != nil {
+                    return nil, storageErr(err)
+                }
+                // Determine UsedPrimary: fetch the key to compare primary version
+                cryptoKey, getErr := s.storage.GetCryptoKey(req.Name)
+                usedPrimary := getErr == nil && cryptoKey.Primary != nil && cryptoKey.Primary.Name == usedVersionName
+                return &kmspb.DecryptResponse{
+                    Plaintext:       plaintext,
+                    PlaintextCrc32C: crc32cValue(plaintext),
+                    UsedPrimary:     usedPrimary,
+                    ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+                }, nil
+            }
+            ```
+
+            ### 3. CreateCryptoKey — reject UNSPECIFIED purpose
+            Remove the fallback:
+            ```go
+            // REMOVE: if purpose == UNSPECIFIED { purpose = ENCRYPT_DECRYPT }
+            // ADD:
+            if purpose == kmspb.CryptoKey_CRYPTO_KEY_PURPOSE_UNSPECIFIED {
+                return nil, status.Error(codes.InvalidArgument, "crypto_key.purpose is required")
+            }
+            ```
+            Note: storage.CreateCryptoKey (Agent A) will also return ErrFailedPrecondition
+            for UNSPECIFIED — the server now rejects first with InvalidArgument, which is
+            the correct gRPC code per spec.
+
+            ### 4. CreateCryptoKeyVersion — pass request proto to storage
+            Change:
+            ```go
+            version, err := s.storage.CreateCryptoKeyVersion(req.Parent, req.CryptoKeyVersion)
+            ```
+
+            ### 5. UpdateCryptoKey — wire update_mask
+            Change:
+            ```go
+            cryptoKey, err := s.storage.UpdateCryptoKey(req.CryptoKey.Name, req.CryptoKey, req.UpdateMask)
+            ```
+            Validate that `req.UpdateMask` is not nil or empty (return InvalidArgument if so):
+            ```go
+            if req.UpdateMask == nil || len(req.UpdateMask.Paths) == 0 {
+                return nil, status.Error(codes.InvalidArgument, "update_mask is required")
+            }
+            ```
+
+            ### 6. UpdateCryptoKeyVersion — wire update_mask + state validation
+            Change:
+            ```go
+            version, err := s.storage.UpdateCryptoKeyVersion(
+                req.CryptoKeyVersion.Name,
+                req.CryptoKeyVersion.State,
+                req.UpdateMask,
+            )
+            ```
+            Remove the existing `if req.CryptoKeyVersion.State == UNSPECIFIED` guard; the
+            storage layer now validates via mask.
+
+            ## What to implement in internal/server/importjob.go
+
+            ### 7. ImportCryptoKeyVersion — validate algorithm
+            Add before calling storage:
+            ```go
+            if req.Algorithm == kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED {
+                return nil, status.Error(codes.InvalidArgument, "algorithm is required")
+            }
+            ```
+            (Storage layer also validates, but server should return InvalidArgument, not
+            FailedPrecondition, for a missing required field.)
+
+            ## Integration tests — conformance_test.go
+            Create `conformance_test.go` in the root package (`package gcp_kms_emulator_test`)
+            with the following test functions. Each test creates its own keyring with a unique
+            name to avoid collisions with existing tests.
+
+            - `TestConformance_Encrypt_AAD`: create ENCRYPT_DECRYPT key; encrypt with AAD;
+              decrypt with same AAD succeeds; decrypt with different AAD fails.
+            - `TestConformance_Encrypt_CRC32C_Mismatch`: encrypt with wrong PlaintextCrc32C,
+              expect codes.InvalidArgument.
+            - `TestConformance_Encrypt_ResponseName_IsVersion`: verify EncryptResponse.Name
+              contains "cryptoKeyVersions/".
+            - `TestConformance_Encrypt_WrongPurpose`: create MAC key, call Encrypt, expect
+              codes.FailedPrecondition.
+            - `TestConformance_Decrypt_WrongPurpose`: create ASYMMETRIC_SIGN key, call Decrypt,
+              expect codes.FailedPrecondition.
+            - `TestConformance_Decrypt_UsedPrimary`: encrypt then decrypt; verify UsedPrimary=true.
+            - `TestConformance_CreateCryptoKey_UnspecifiedPurpose`: create key with UNSPECIFIED
+              purpose, expect codes.InvalidArgument.
+            - `TestConformance_UpdateCryptoKey_MaskRespected`: update only "labels", verify
+              version_template unchanged.
+            - `TestConformance_UpdateCryptoKeyVersion_InvalidTransition`: try to set
+              state=DESTROY_SCHEDULED via UpdateCryptoKeyVersion, expect error.
+            - `TestConformance_DestroyCryptoKeyVersion_Idempotent`: destroy a version twice,
+              second call should succeed.
+            - `TestConformance_DestroyCryptoKeyVersion_DestroyTime`: verify response has
+              non-nil DestroyTime.
+            - `TestConformance_MacSign_WrongPurpose`: call MacSign on ENCRYPT_DECRYPT key,
+              expect codes.FailedPrecondition.
+            - `TestConformance_MacSign_CRC32C_Mismatch`: call MacSign with wrong DataCrc32C,
+              expect codes.InvalidArgument.
+            - `TestConformance_RawEncrypt_WrongPurpose`: call RawEncrypt on ENCRYPT_DECRYPT key,
+              expect codes.FailedPrecondition.
+            - `TestConformance_ImportCryptoKeyVersion_UnspecifiedAlgorithm`: call
+              ImportCryptoKeyVersion with UNSPECIFIED algorithm, expect codes.InvalidArgument.
+            - `TestConformance_AsymmetricSign_DataField`: create ASYMMETRIC_SIGN key, call
+              AsymmetricSign with Data field instead of Digest, verify signature validates.
+            - `TestConformance_AsymmetricSign_WrongPurpose`: create ENCRYPT_DECRYPT key with
+              EC material (workaround: use RSA_DECRYPT key), call AsymmetricSign, expect
+              codes.FailedPrecondition.
+            - `TestConformance_AsymmetricDecrypt_SHA1OAEP`: create RSA_DECRYPT_OAEP_2048_SHA1
+              key, get public key, encrypt locally with SHA-1 OAEP, call AsymmetricDecrypt —
+              expect plaintext returned correctly.
+
+            Use `google.golang.org/grpc/status` and `google.golang.org/grpc/codes` for
+            error code assertions. Use the `setupTestServer`/`setupTestClient` helpers from
+            `integration_test.go` (same package).
+
+            ## Verification gate
+            ```
+            go build ./...
+            go vet ./...
+            go test ./...
+            ```
+
+            ## Constraints
+            - Do not modify any storage package files.
+            - Do not modify asymmetric.go, mac.go, raw.go, or crc32c.go in the server package.
+            - Import `fieldmaskpb` in server.go for UpdateCryptoKey.
+            - The `verifyCRC32C` helper is already in crc32c.go (same package) after Wave 1.
+            - When writing TestConformance_AsymmetricSign_WrongPurpose: the simplest approach
+              is to create an ASYMMETRIC_DECRYPT key and call AsymmetricSign on it.
+          files:
+            - internal/server/server.go
+            - internal/server/importjob.go
+            - conformance_test.go
+          dependencies:
+            - A
+            - B
+            - C
+            - D
+            - E
+quality_gates:
+    level: standard
+    gates:
+        - type: build
+          command: go build ./...
+          required: true
+        - type: lint
+          command: go vet ./...
+          required: true
+        - type: test
+          command: go test ./...
+          required: true
+pre_mortem:
+    overall_risk: medium
+    rows:
+        - scenario: |-
+            Agent E modifies internal/storage/raw.go for purpose validation while Agent A's
+            storage.go changes include structural additions (new StoredCryptoKey fields). If both
+            compile independently against the current codebase, they compile fine. However, if raw.go
+            calls findKeyAndVersion (defined by Agent B in asymmetric.go), and Agent E's worktree
+            doesn't have Agent B's changes, build may fail.
+          likelihood: medium
+          impact: medium
+          mitigation: |-
+            Agent E's task is explicit: call findKeyAndVersion which is in the same package.
+            The build gate for E is go build ./internal/storage/... which will fail if B's
+            asymmetric.go changes are not present. Agent E should write the call as if
+            findKeyAndVersion exists and note in the completion report if the build fails
+            due to missing B changes. Post-merge the build is correct. Orchestrator runs
+            full suite post-wave-1-merge before launching wave 2.
+        - scenario: |-
+            Agent A changes UpdateCryptoKeyVersion signature to accept a FieldMask. Agent F
+            (wave 2) calls this with req.UpdateMask. If Agent A's test for state transitions
+            hardcodes a nil mask, it may not exercise the mask-required path and Agent F's
+            test expectation may diverge.
+          likelihood: low
+          impact: low
+          mitigation: |-
+            Agent A's task explicitly shows the mask validation logic. Agent F owns the server
+            layer and verifies via integration tests. The storage unit test covers both nil-mask
+            and populated-mask scenarios.
+        - scenario: |-
+            The test file conformance_test.go (Agent F, wave 2) exercises AsymmetricDecrypt with
+            SHA-1 OAEP. This requires Agent B's oaepHashFromAlgorithm change AND a key created
+            with RSA_DECRYPT_OAEP_2048_SHA1 algorithm. If keymaterial.go does not generate
+            the SHA-1 key variant, the test key creation itself will fail before decryption.
+          likelihood: low
+          impact: low
+          mitigation: |-
+            Agent A's task explicitly adds nothing for RSA key generation (RSA key gen already
+            supports all RSA sizes via rsaBitsFromAlgorithm). The SHA-1 OAEP variant generates
+            the same RSA key as SHA-256 — only the decrypt hash changes. No keymaterial.go change
+            is needed for this test case.
+        - scenario: |-
+            UpdateCryptoKey with update_mask now requires a non-empty mask. Existing integration
+            tests in integration_test.go may call UpdateCryptoKey without a mask (no mask was
+            required before). This would break existing tests.
+          likelihood: high
+          impact: medium
+          mitigation: |-
+            Before running the full suite, Agent F should grep integration_test.go for
+            UpdateCryptoKey calls. If any exist without an UpdateMask, add a minimal
+            UpdateMask{Paths: []string{"labels"}} to those calls. This is an existing test
+            maintenance burden, not a design flaw. Agent F's task should include this audit.
+            Alternatively, the server can treat nil mask as "update all specified fields"
+            with a warning — but this deviates from spec. Recommended: require mask, fix
+            existing tests.
+        - scenario: |-
+            storage.Decrypt now returns (plaintext, versionName, error) — a 3-value return.
+            Any existing direct unit tests in storage_test.go that call s.storage.Decrypt
+            with 2-return-value assignment will fail to compile.
+          likelihood: high
+          impact: medium
+          mitigation: |-
+            Agent A must grep internal/storage/storage_test.go for Decrypt calls and update
+            all 2-value assignments to 3-value. Similarly for Encrypt. Include this as an
+            explicit step in Agent A's task. Agent A's task description calls this out
+            implicitly via the signature contract; making it explicit in the task prevents
+            the compile failure.
+        - scenario: |-
+            The existing mac_test.go and asymmetric_test.go in the root package test against
+            the HMAC_SHA256 and EC_SIGN_P256_SHA256 algorithms. If purpose validation is
+            now enforced and the test creates the key with the correct purpose (MAC, ASYMMETRIC_SIGN),
+            these tests should still pass. But if a test mistakenly uses an incorrect purpose,
+            it will now fail.
+          likelihood: low
+          impact: low
+          mitigation: |-
+            Existing tests already create keys with correct purposes (verified by reading
+            mac_test.go and asymmetric_test.go). No changes to existing tests expected.
+critic_report:
+    verdict: PASS
+    agent_reviews: {}
+    summary: 'Error resolved: added storage_test.go to Agent A ownership with call-site update instructions for Encrypt/Decrypt/CreateCryptoKeyVersion signature changes. Warning noted: Agent D brief mentions wrapperspb import already present in crc32c.go — wave agents should check before adding. All other checks pass.'
+    reviewed_at: "2026-04-03T17:58:38Z"
+    issue_count: 0
+state: SCOUT_PENDING
+injection_method: hook
