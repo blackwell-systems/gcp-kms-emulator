@@ -439,21 +439,8 @@ func (s *Server) GenerateRandomBytes(ctx context.Context, req *kmspb.GenerateRan
 	return nil, status.Error(codes.Unimplemented, "GenerateRandomBytes not implemented yet")
 }
 
-func (s *Server) ListImportJobs(ctx context.Context, req *kmspb.ListImportJobsRequest) (*kmspb.ListImportJobsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "ListImportJobs not implemented yet")
-}
-
-func (s *Server) GetImportJob(ctx context.Context, req *kmspb.GetImportJobRequest) (*kmspb.ImportJob, error) {
-	return nil, status.Error(codes.Unimplemented, "GetImportJob not implemented yet")
-}
-
-func (s *Server) CreateImportJob(ctx context.Context, req *kmspb.CreateImportJobRequest) (*kmspb.ImportJob, error) {
-	return nil, status.Error(codes.Unimplemented, "CreateImportJob not implemented yet")
-}
-
-func (s *Server) ImportCryptoKeyVersion(ctx context.Context, req *kmspb.ImportCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	return nil, status.Error(codes.Unimplemented, "ImportCryptoKeyVersion not implemented yet")
-}
+// CreateImportJob, GetImportJob, ListImportJobs, and ImportCryptoKeyVersion
+// are implemented in importjob.go
 
 func (s *Server) RawEncrypt(ctx context.Context, req *kmspb.RawEncryptRequest) (*kmspb.RawEncryptResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "RawEncrypt not implemented yet")
