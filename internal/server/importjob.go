@@ -95,6 +95,10 @@ func (s *Server) ImportCryptoKeyVersion(ctx context.Context, req *kmspb.ImportCr
 		return nil, err
 	}
 
+	if req.Algorithm == kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED {
+		return nil, status.Error(codes.InvalidArgument, "algorithm is required")
+	}
+
 	// Extract wrapped key: prefer the direct WrappedKey field, fall back to legacy oneof
 	wrappedKey := req.GetWrappedKey()
 	if len(wrappedKey) == 0 {

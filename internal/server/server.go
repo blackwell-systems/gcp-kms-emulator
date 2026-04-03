@@ -204,7 +204,7 @@ func (s *Server) CreateCryptoKey(ctx context.Context, req *kmspb.CreateCryptoKey
 
 	purpose := req.CryptoKey.Purpose
 	if purpose == kmspb.CryptoKey_CRYPTO_KEY_PURPOSE_UNSPECIFIED {
-		purpose = kmspb.CryptoKey_ENCRYPT_DECRYPT
+		return nil, status.Error(codes.InvalidArgument, "crypto_key.purpose is required")
 	}
 
 	cryptoKey, err := s.storage.CreateCryptoKey(
@@ -241,6 +241,12 @@ func (s *Server) Encrypt(ctx context.Context, req *kmspb.EncryptRequest) (*kmspb
 	if len(req.Plaintext) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "plaintext is required")
 	}
+	if err := verifyCRC32C(req.Plaintext, req.PlaintextCrc32C); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.AdditionalAuthenticatedData, req.AdditionalAuthenticatedDataCrc32C); err != nil {
+		return nil, err
+	}
 	if err := s.checkPermission(ctx, "Encrypt", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
 		return nil, err
 	}
@@ -267,18 +273,27 @@ func (s *Server) Decrypt(ctx context.Context, req *kmspb.DecryptRequest) (*kmspb
 	if len(req.Ciphertext) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "ciphertext is required")
 	}
+	if err := verifyCRC32C(req.Ciphertext, req.CiphertextCrc32C); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.AdditionalAuthenticatedData, req.AdditionalAuthenticatedDataCrc32C); err != nil {
+		return nil, err
+	}
 	if err := s.checkPermission(ctx, "Decrypt", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
 		return nil, err
 	}
 
-	plaintext, _, err := s.storage.Decrypt(req.Name, req.Ciphertext, req.AdditionalAuthenticatedData)
+	plaintext, usedVersionName, err := s.storage.Decrypt(req.Name, req.Ciphertext, req.AdditionalAuthenticatedData)
 	if err != nil {
 		return nil, storageErr(err)
 	}
+	// Determine UsedPrimary: fetch the key to compare with primary version name
+	cryptoKey, getErr := s.storage.GetCryptoKey(req.Name)
+	usedPrimary := getErr == nil && cryptoKey.Primary != nil && cryptoKey.Primary.Name == usedVersionName
 	return &kmspb.DecryptResponse{
 		Plaintext:       plaintext,
 		PlaintextCrc32C: crc32cValue(plaintext),
-		UsedPrimary:     true,
+		UsedPrimary:     usedPrimary,
 		ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
@@ -355,6 +370,9 @@ func (s *Server) UpdateCryptoKey(ctx context.Context, req *kmspb.UpdateCryptoKey
 	if req.CryptoKey == nil || req.CryptoKey.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key.name is required")
 	}
+	if req.UpdateMask == nil || len(req.UpdateMask.Paths) == 0 {
+		return nil, status.Error(codes.InvalidArgument, "update_mask is required")
+	}
 	if err := s.checkPermission(ctx, "UpdateCryptoKey", authz.NormalizeCryptoKeyResource(req.CryptoKey.Name)); err != nil {
 		return nil, err
 	}
@@ -369,9 +387,6 @@ func (s *Server) UpdateCryptoKey(ctx context.Context, req *kmspb.UpdateCryptoKey
 func (s *Server) UpdateCryptoKeyVersion(ctx context.Context, req *kmspb.UpdateCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
 	if req.CryptoKeyVersion == nil || req.CryptoKeyVersion.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key_version.name is required")
-	}
-	if req.CryptoKeyVersion.State == kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_STATE_UNSPECIFIED {
-		return nil, status.Error(codes.InvalidArgument, "crypto_key_version.state is required")
 	}
 	if err := s.checkPermission(ctx, "UpdateCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.CryptoKeyVersion.Name)); err != nil {
 		return nil, err
