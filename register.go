@@ -8,7 +8,6 @@ package gcp_kms_emulator
 import (
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
 	"google.golang.org/grpc"
-	"google.golang.org/grpc/reflection"
 
 	"github.com/blackwell-systems/gcp-kms-emulator/internal/server"
 )
@@ -28,6 +27,5 @@ func Register(grpcSrv *grpc.Server, opts ...Option) error {
 		return err
 	}
 	kmspb.RegisterKeyManagementServiceServer(grpcSrv, srv)
-	reflection.Register(grpcSrv)
 	return nil
 }
