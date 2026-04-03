@@ -435,9 +435,7 @@ func (s *Server) MacVerify(ctx context.Context, req *kmspb.MacVerifyRequest) (*k
 	return nil, status.Error(codes.Unimplemented, "MacVerify not implemented yet")
 }
 
-func (s *Server) GenerateRandomBytes(ctx context.Context, req *kmspb.GenerateRandomBytesRequest) (*kmspb.GenerateRandomBytesResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "GenerateRandomBytes not implemented yet")
-}
+// GenerateRandomBytes is implemented in raw.go
 
 func (s *Server) ListImportJobs(ctx context.Context, req *kmspb.ListImportJobsRequest) (*kmspb.ListImportJobsResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "ListImportJobs not implemented yet")
@@ -455,13 +453,7 @@ func (s *Server) ImportCryptoKeyVersion(ctx context.Context, req *kmspb.ImportCr
 	return nil, status.Error(codes.Unimplemented, "ImportCryptoKeyVersion not implemented yet")
 }
 
-func (s *Server) RawEncrypt(ctx context.Context, req *kmspb.RawEncryptRequest) (*kmspb.RawEncryptResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "RawEncrypt not implemented yet")
-}
-
-func (s *Server) RawDecrypt(ctx context.Context, req *kmspb.RawDecryptRequest) (*kmspb.RawDecryptResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "RawDecrypt not implemented yet")
-}
+// RawEncrypt and RawDecrypt are implemented in raw.go
 
 func (s *Server) Decapsulate(ctx context.Context, req *kmspb.DecapsulateRequest) (*kmspb.DecapsulateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "Decapsulate not implemented yet")
