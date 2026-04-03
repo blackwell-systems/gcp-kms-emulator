@@ -1,0 +1,11 @@
+{
+  "agent": "E",
+  "wave": 2,
+  "impl_doc": "/Users/dayna.blackwell/code/gcp-kms-emulator/docs/IMPL/IMPL-kms-full-rpc-coverage.yaml",
+  "owned_files": [
+    "internal/storage/storage.go",
+    "internal/server/server.go",
+    "internal/authz/permissions.go"
+  ],
+  "repo_root": "/Users/dayna.blackwell/code/gcp-kms-emulator"
+}

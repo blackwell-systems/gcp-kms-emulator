@@ -517,6 +517,7 @@ waves:
             - B
             - C
             - D
+          context_source: prepared-brief
 quality_gates:
     level: standard
     gates:
@@ -611,6 +612,16 @@ completion_reports:
             - TestIntegration_ImportCryptoKeyVersion
         verification: PASS
         notes: 'Added ImportJobs field to StoredKeyRing in storage.go (interface contract). Lazy-init so existing CreateKeyRing works. Removed 4 Unimplemented stubs from server.go. Out-of-scope: authz/permissions.go needs import job permission entries.'
+    E:
+        status: complete
+        branch: saw/kms-full-rpc-coverage/wave2-agent-E
+        commit: 4c9df32
+        files_changed:
+            - internal/storage/storage.go
+            - internal/server/server.go
+            - internal/authz/permissions.go
+        verification: PASS
+        notes: RestoreCryptoKeyVersion fully implemented (storage + server). Decapsulate stub cleaned up. ImportJobs map initialized in CreateKeyRing. 8 permission entries added. All tests pass.
 pre_mortem:
     overall_risk: medium
     rows:
@@ -651,5 +662,5 @@ critic_report:
     summary: 'Warnings resolved: Wave 1 verification gates narrowed to go build ./internal/storage/... only. All 6 checks pass.'
     reviewed_at: "2026-04-03T17:08:15Z"
     issue_count: 0
-state: "WAVE_PENDING"
+state: WAVE_PENDING
 injection_method: hook

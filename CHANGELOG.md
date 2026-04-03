@@ -7,6 +7,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.6.0] - 2026-04-03
+
+### Added
+- **Full asymmetric crypto**: `AsymmetricSign`, `AsymmetricDecrypt`, `GetPublicKey` with real RSA (2048/3072/4096) and ECDSA (P-256, P-384) key generation and operations
+- **MAC operations**: `MacSign`, `MacVerify` using HMAC-SHA256 with constant-time comparison
+- **Raw encryption**: `RawEncrypt`, `RawDecrypt` using AES-256-GCM without envelope wrapping
+- **Random bytes**: `GenerateRandomBytes` via `crypto/rand` (1–1024 bytes)
+- **Import jobs**: `CreateImportJob`, `GetImportJob`, `ListImportJobs`, `ImportCryptoKeyVersion` with RSA-2048 OAEP wrapping key generation and key material unwrapping
+- **RestoreCryptoKeyVersion**: Restores `DESTROY_SCHEDULED` versions to `DISABLED` state
+- Key material generation at version creation time based on `CryptoKeyVersionAlgorithm`
+- 8 new IAM permission mappings for all new operations
+- Integration tests for all new operations (asymmetric roundtrip, MAC sign/verify, raw encrypt/decrypt, import lifecycle)
+
+### Changed
+- KMS API coverage: **17 → 29 of 30 methods** implemented (97% — only `Decapsulate` KEM stub remains)
+- Key versions now generate appropriate crypto material (RSA keypairs, ECDSA keypairs, HMAC keys, AES keys) based on algorithm
+
 ## [0.5.0] - 2026-04-03
 
 ### Changed
