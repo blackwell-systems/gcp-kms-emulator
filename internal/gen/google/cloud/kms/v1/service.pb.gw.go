@@ -247,9 +247,6 @@ func local_request_KeyManagementService_ListImportJobs_0(ctx context.Context, ma
 	return msg, metadata, err
 }
 
-
-
-
 func request_KeyManagementService_GetKeyRing_0(ctx context.Context, marshaler runtime.Marshaler, client KeyManagementServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
 		protoReq GetKeyRingRequest
@@ -459,8 +456,6 @@ func local_request_KeyManagementService_GetImportJob_0(ctx context.Context, mars
 	return msg, metadata, err
 }
 
-
-
 var filter_KeyManagementService_CreateKeyRing_0 = &utilities.DoubleArray{Encoding: map[string]int{"key_ring": 0, "parent": 1}, Base: []int{1, 1, 2, 0, 0}, Check: []int{0, 1, 1, 2, 3}}
 
 func request_KeyManagementService_CreateKeyRing_0(ctx context.Context, marshaler runtime.Marshaler, client KeyManagementServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
@@ -623,10 +618,6 @@ func local_request_KeyManagementService_CreateCryptoKeyVersion_0(ctx context.Con
 	msg, err := server.CreateCryptoKeyVersion(ctx, &protoReq)
 	return msg, metadata, err
 }
-
-
-
-
 
 func request_KeyManagementService_ImportCryptoKeyVersion_0(ctx context.Context, marshaler runtime.Marshaler, client KeyManagementServiceClient, req *http.Request, pathParams map[string]string) (proto.Message, runtime.ServerMetadata, error) {
 	var (
