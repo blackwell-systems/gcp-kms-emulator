@@ -525,10 +525,10 @@ quality_gates:
           command: go test -v ./...
           required: true
 scaffolds:
-    - file_path: ""
+    - file: internal/storage/keymaterial.go
       contents: AsymmetricKeyMaterial struct, StoredImportJob struct, generateKeyMaterial()
       import_path: github.com/blackwell-systems/gcp-kms-emulator/internal/storage
-      status: committed (6806da5)
+      status: committed
 pre_mortem:
     overall_risk: medium
     rows:
@@ -569,5 +569,5 @@ critic_report:
     summary: 'Warnings resolved: Wave 1 verification gates narrowed to go build ./internal/storage/... only. All 6 checks pass.'
     reviewed_at: "2026-04-03T17:08:15Z"
     issue_count: 0
-state: SCAFFOLD_COMMITTED
+state: WAVE_PENDING
 injection_method: hook
