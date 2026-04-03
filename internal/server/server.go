@@ -412,9 +412,25 @@ func (s *Server) DestroyCryptoKeyVersion(ctx context.Context, req *kmspb.Destroy
 }
 
 func (s *Server) RestoreCryptoKeyVersion(ctx context.Context, req *kmspb.RestoreCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	return nil, status.Error(codes.Unimplemented, "RestoreCryptoKeyVersion not implemented yet")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
+	}
+	if err := s.checkPermission(ctx, "RestoreCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
+		return nil, err
+	}
+
+	version, err := s.storage.RestoreCryptoKeyVersion(req.Name)
+	if err != nil {
+		return nil, storageErr(err)
+	}
+	return version, nil
 }
 
+// Decapsulate is a stub for KEM decapsulation (not yet supported).
+// TODO: Implement KEM support when needed.
 func (s *Server) Decapsulate(ctx context.Context, req *kmspb.DecapsulateRequest) (*kmspb.DecapsulateResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "Decapsulate not implemented yet")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
+	}
+	return nil, status.Error(codes.Unimplemented, "KEM not yet supported")
 }

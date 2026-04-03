@@ -105,6 +105,7 @@ func (s *Storage) CreateKeyRing(name string) (*kmspb.KeyRing, error) {
 		Name:       name,
 		CreateTime: now,
 		CryptoKeys: make(map[string]*StoredCryptoKey),
+		ImportJobs: make(map[string]*StoredImportJob),
 	}
 
 	s.keyrings[name] = keyring
@@ -552,6 +553,32 @@ func (s *Storage) DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 				}
 
 				version.State = kmspb.CryptoKeyVersion_DESTROY_SCHEDULED
+				return &kmspb.CryptoKeyVersion{
+					Name:       version.Name,
+					State:      version.State,
+					CreateTime: timestamppb.New(version.CreateTime),
+					Algorithm:  version.Algorithm,
+				}, nil
+			}
+		}
+	}
+
+	return nil, &ErrNotFound{Resource: versionName}
+}
+
+// RestoreCryptoKeyVersion restores a DESTROY_SCHEDULED version to DISABLED state
+func (s *Storage) RestoreCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersion, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	for _, keyring := range s.keyrings {
+		for _, cryptoKey := range keyring.CryptoKeys {
+			if version, exists := cryptoKey.Versions[versionName]; exists {
+				if version.State != kmspb.CryptoKeyVersion_DESTROY_SCHEDULED {
+					return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not scheduled for destruction: %s", versionName)}
+				}
+
+				version.State = kmspb.CryptoKeyVersion_DISABLED
 				return &kmspb.CryptoKeyVersion{
 					Name:       version.Name,
 					State:      version.State,

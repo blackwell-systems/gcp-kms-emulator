@@ -118,6 +118,46 @@ var OperationPermissions = map[string]PermissionCheck{
 		Permission: "cloudkms.cryptoKeyVersions.useToMacVerify",
 		Target:     ResourceTargetSelf, // Check against cryptokeyversion
 	},
+
+	// Random bytes
+	"GenerateRandomBytes": {
+		Permission: "cloudkms.locations.generateRandomBytes",
+		Target:     ResourceTargetSelf,
+	},
+
+	// Raw encryption operations
+	"RawEncrypt": {
+		Permission: "cloudkms.cryptoKeyVersions.useToEncrypt",
+		Target:     ResourceTargetSelf,
+	},
+	"RawDecrypt": {
+		Permission: "cloudkms.cryptoKeyVersions.useToDecrypt",
+		Target:     ResourceTargetSelf,
+	},
+
+	// Import job operations
+	"CreateImportJob": {
+		Permission: "cloudkms.importJobs.create",
+		Target:     ResourceTargetParent, // Check against keyring
+	},
+	"GetImportJob": {
+		Permission: "cloudkms.importJobs.get",
+		Target:     ResourceTargetSelf,
+	},
+	"ListImportJobs": {
+		Permission: "cloudkms.importJobs.list",
+		Target:     ResourceTargetParent, // Check against keyring
+	},
+	"ImportCryptoKeyVersion": {
+		Permission: "cloudkms.cryptoKeyVersions.create",
+		Target:     ResourceTargetParent, // Check against cryptokey
+	},
+
+	// KEM operations
+	"Decapsulate": {
+		Permission: "cloudkms.cryptoKeyVersions.useToDecapsulate",
+		Target:     ResourceTargetSelf,
+	},
 }
 
 // GetPermission returns the permission and target for an operation
