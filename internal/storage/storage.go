@@ -58,6 +58,7 @@ type StoredKeyRing struct {
 	Name       string
 	CreateTime time.Time
 	CryptoKeys map[string]*StoredCryptoKey
+	ImportJobs map[string]*StoredImportJob
 }
 
 // StoredCryptoKey represents a crypto key and its versions

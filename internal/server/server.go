@@ -437,21 +437,8 @@ func (s *Server) MacVerify(ctx context.Context, req *kmspb.MacVerifyRequest) (*k
 
 // GenerateRandomBytes is implemented in raw.go
 
-func (s *Server) ListImportJobs(ctx context.Context, req *kmspb.ListImportJobsRequest) (*kmspb.ListImportJobsResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "ListImportJobs not implemented yet")
-}
-
-func (s *Server) GetImportJob(ctx context.Context, req *kmspb.GetImportJobRequest) (*kmspb.ImportJob, error) {
-	return nil, status.Error(codes.Unimplemented, "GetImportJob not implemented yet")
-}
-
-func (s *Server) CreateImportJob(ctx context.Context, req *kmspb.CreateImportJobRequest) (*kmspb.ImportJob, error) {
-	return nil, status.Error(codes.Unimplemented, "CreateImportJob not implemented yet")
-}
-
-func (s *Server) ImportCryptoKeyVersion(ctx context.Context, req *kmspb.ImportCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	return nil, status.Error(codes.Unimplemented, "ImportCryptoKeyVersion not implemented yet")
-}
+// CreateImportJob, GetImportJob, ListImportJobs, and ImportCryptoKeyVersion
+// are implemented in importjob.go
 
 // RawEncrypt and RawDecrypt are implemented in raw.go
 
