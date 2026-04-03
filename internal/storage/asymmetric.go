@@ -7,9 +7,12 @@ import (
 	"crypto/ecdsa"
 	"crypto/rand"
 	"crypto/rsa"
+	"crypto/sha1"
 	"crypto/sha256"
+	"crypto/sha512"
 	"crypto/x509"
 	"fmt"
+	"hash"
 
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
 )
@@ -25,6 +28,21 @@ func (s *Storage) findVersion(versionName string) *StoredCryptoKeyVersion {
 		}
 	}
 	return nil
+}
+
+// findKeyAndVersion locates both the parent StoredCryptoKey and the
+// StoredCryptoKeyVersion for a given version resource name.
+// Caller must hold at least s.mu.RLock.
+// Returns (nil, nil) if not found.
+func (s *Storage) findKeyAndVersion(versionName string) (*StoredCryptoKey, *StoredCryptoKeyVersion) {
+	for _, keyring := range s.keyrings {
+		for _, cryptoKey := range keyring.CryptoKeys {
+			if version, exists := cryptoKey.Versions[versionName]; exists {
+				return cryptoKey, version
+			}
+		}
+	}
+	return nil, nil
 }
 
 // hashFromDigestType maps a digest type string to a crypto.Hash constant.
@@ -81,16 +99,56 @@ func isRSADecryptAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm)
 	}
 }
 
-// AsymmetricSign signs a digest using the asymmetric private key of the specified
-// key version. It supports RSA PKCS1v15 and ECDSA signing depending on the
-// key version's algorithm.
-func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType string) ([]byte, error) {
+// hashForSignAlgorithm returns the crypto.Hash and digest type string for a
+// signing algorithm. Used to hash rawData when the data field is provided.
+func hashForSignAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) (crypto.Hash, string, error) {
+	switch alg {
+	case kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
+		kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_2048_SHA256,
+		kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_3072_SHA256,
+		kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_4096_SHA256:
+		return crypto.SHA256, "SHA256", nil
+	case kmspb.CryptoKeyVersion_EC_SIGN_P384_SHA384:
+		return crypto.SHA384, "SHA384", nil
+	case kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_4096_SHA512:
+		return crypto.SHA512, "SHA512", nil
+	default:
+		return 0, "", fmt.Errorf("no hash defined for sign algorithm %v", alg)
+	}
+}
+
+// oaepHashFromAlgorithm returns the hash.Hash to use for RSA OAEP operations
+// based on the key version algorithm.
+func oaepHashFromAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) hash.Hash {
+	name := alg.String()
+	switch {
+	case containsSubstring(name, "SHA1"):
+		return sha1.New()
+	case containsSubstring(name, "SHA512"):
+		return sha512.New()
+	default:
+		// SHA256 is the default for OAEP algorithms
+		return sha256.New()
+	}
+}
+
+// AsymmetricSign signs a digest (or raw data) using the asymmetric private key of
+// the specified key version. It supports RSA PKCS1v15 and ECDSA signing depending
+// on the key version's algorithm.
+//
+// If rawData is non-nil, the data is hashed internally using the algorithm's hash
+// function and used as the digest. Otherwise, digest and digestType are used directly.
+func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType string, rawData []byte) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	version := s.findVersion(versionName)
+	cryptoKey, version := s.findKeyAndVersion(versionName)
 	if version == nil {
 		return nil, &ErrNotFound{Resource: versionName}
+	}
+
+	if cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_SIGN {
+		return nil, &ErrFailedPrecondition{Message: "key purpose must be ASYMMETRIC_SIGN"}
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
@@ -99,6 +157,18 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 
 	if version.AsymmetricKey == nil {
 		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version has no asymmetric key material: %s", versionName)}
+	}
+
+	// If rawData is provided, hash it internally and derive digest/digestType.
+	if rawData != nil {
+		h, dt, err := hashForSignAlgorithm(version.Algorithm)
+		if err != nil {
+			return nil, &ErrFailedPrecondition{Message: err.Error()}
+		}
+		hasher := h.New()
+		hasher.Write(rawData)
+		digest = hasher.Sum(nil)
+		digestType = dt
 	}
 
 	hashType, err := hashFromDigestType(digestType)
@@ -128,14 +198,19 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 }
 
 // AsymmetricDecrypt decrypts ciphertext using the RSA private key of the specified
-// key version. Only RSA OAEP decryption algorithms are supported.
+// key version. Only RSA OAEP decryption algorithms are supported. The hash function
+// is selected based on the version's algorithm.
 func (s *Storage) AsymmetricDecrypt(versionName string, ciphertext []byte) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	version := s.findVersion(versionName)
+	cryptoKey, version := s.findKeyAndVersion(versionName)
 	if version == nil {
 		return nil, &ErrNotFound{Resource: versionName}
+	}
+
+	if cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_DECRYPT {
+		return nil, &ErrFailedPrecondition{Message: "key purpose must be ASYMMETRIC_DECRYPT"}
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
@@ -160,22 +235,22 @@ func (s *Storage) AsymmetricDecrypt(versionName string, ciphertext []byte) ([]by
 		return nil, &ErrFailedPrecondition{Message: "key is not an RSA private key"}
 	}
 
-	return rsa.DecryptOAEP(sha256.New(), rand.Reader, rsaKey, ciphertext, nil)
+	return rsa.DecryptOAEP(oaepHashFromAlgorithm(version.Algorithm), rand.Reader, rsaKey, ciphertext, nil)
 }
 
 // GetPublicKey returns the PEM-encoded public key and algorithm for the specified
-// asymmetric key version.
+// asymmetric key version. DISABLED versions are allowed to return their public key.
 func (s *Storage) GetPublicKey(versionName string) (string, int32, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	version := s.findVersion(versionName)
+	cryptoKey, version := s.findKeyAndVersion(versionName)
 	if version == nil {
 		return "", 0, &ErrNotFound{Resource: versionName}
 	}
 
-	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return "", 0, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+	if cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_SIGN && cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_DECRYPT {
+		return "", 0, &ErrFailedPrecondition{Message: "key purpose must be ASYMMETRIC_SIGN or ASYMMETRIC_DECRYPT"}
 	}
 
 	if version.AsymmetricKey == nil {
