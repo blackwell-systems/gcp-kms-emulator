@@ -1,0 +1,40 @@
+{
+  "entries": {
+    "19f2414a04e35c5c487c2645e8baed4d": {
+      "test": {
+        "gate_type": "test",
+        "command": "go test -v ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "=== RUN   TestIAMIntegration\n    iam_integration_test.go:25: Skipping IAM integration tests - IAM_HOST not set\n--- SKIP: TestIAMIntegration (0.00s)\n=== RUN   TestIAMModeOff\n--- PASS: TestIAMModeOff (0.00s)\n=== RUN   TestIAMPermissiveVsStrict\n    iam_integration_test.go:202: Skipping IAM integration tests - IAM_HOST not set\n--- SKIP: TestIAMPermissiveVsStrict (0.00s)\n=== RUN   TestIntegration_FullWorkflow\n=== RUN   TestIntegration_FullWorkflow/CreateKeyRing\n=== RUN   TestIntegration_FullWorkflow/GetKeyRing\n=== RUN   TestIntegration_FullWorkflow/ListKeyRings\n=== RUN   TestIntegration_FullWorkflow/CreateCryptoKey\n=== RUN   TestIntegration_FullWorkflow/GetCryptoKey\n=== RUN   TestIntegration_FullWorkflow/ListCryptoKeys\n=== RUN   TestIntegration_FullWorkflow/Encrypt\n=== RUN   TestIntegration_FullWorkflow/Decrypt\n=== RUN   TestIntegration_FullWorkflow/CreateCryptoKeyVersion\n=== RUN   TestIntegration_FullWorkflow/UpdateCryptoKeyPrimaryVersion\n=== RUN   TestIntegration_FullWorkflow/DecryptOldCiphertext\n=== RUN   TestIntegration_FullWorkflow/EncryptWithNewVersion\n--- PASS: TestIntegration_FullWorkflow (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/CreateKeyRing (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/GetKeyRing (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/ListKeyRings (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/CreateCryptoKey (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/GetCryptoKey (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/ListCryptoKeys (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/Encrypt (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/Decrypt (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/CreateCryptoKeyVersion (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/UpdateCryptoKeyPrimaryVersion (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/DecryptOldCiphertext (0.00s)\n    --- PASS: TestIntegration_FullWorkflow/EncryptWithNewVersion (0.00s)\n=== RUN   TestIntegration_MultipleKeyRings\n--- PASS: TestIntegration_MultipleKeyRings (0.00s)\nPASS\nok  \tgithub.com/blackwell-systems/gcp-kms-emulator\t0.447s\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server-dual\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server-rest\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/authz\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/gateway\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/gen/google/cloud/kms/v1\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/server\t[no test files]\n=== RUN   TestCreateKeyRing\n--- PASS: TestCreateKeyRing (0.00s)\n=== RUN   TestCreateKeyRingDuplicate\n--- PASS: TestCreateKeyRingDuplicate (0.00s)\n=== RUN   TestGetKeyRing\n--- PASS: TestGetKeyRing (0.00s)\n=== RUN   TestGetKeyRingNotFound\n--- PASS: TestGetKeyRingNotFound (0.00s)\n=== RUN   TestListKeyRings\n--- PASS: TestListKeyRings (0.00s)\n=== RUN   TestCreateCryptoKey\n--- PASS: TestCreateCryptoKey (0.00s)\n=== RUN   TestCreateCryptoKeyInvalidKeyRing\n--- PASS: TestCreateCryptoKeyInvalidKeyRing (0.00s)\n=== RUN   TestGetCryptoKey\n--- PASS: TestGetCryptoKey (0.00s)\n=== RUN   TestListCryptoKeys\n--- PASS: TestListCryptoKeys (0.00s)\n=== RUN   TestEncryptDecrypt\n--- PASS: TestEncryptDecrypt (0.00s)\n=== RUN   TestCreateCryptoKeyVersion\n--- PASS: TestCreateCryptoKeyVersion (0.00s)\n=== RUN   TestUpdateCryptoKeyPrimaryVersion\n--- PASS: TestUpdateCryptoKeyPrimaryVersion (0.00s)\n=== RUN   TestDecryptWithMultipleVersions\n--- PASS: TestDecryptWithMultipleVersions (0.00s)\n=== RUN   TestConcurrentAccess\n--- PASS: TestConcurrentAccess (0.00s)\nPASS\nok  \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/storage\t0.534s\n",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T10:08:30.991272-07:00"
+      }
+    },
+    "eb1bfd60c25f5a86e08c0718e5d54548": {
+      "build": {
+        "gate_type": "build",
+        "command": "go build ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T10:08:29.231398-07:00"
+      }
+    },
+    "f83ad60004473cdbcabdb83339c5c915": {
+      "lint": {
+        "gate_type": "lint",
+        "command": "go vet ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T10:08:29.603078-07:00"
+      }
+    }
+  }
+}
