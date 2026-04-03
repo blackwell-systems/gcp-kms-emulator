@@ -524,6 +524,11 @@ quality_gates:
         - type: test
           command: go test -v ./...
           required: true
+scaffolds:
+    - file_path: ""
+      contents: AsymmetricKeyMaterial struct, StoredImportJob struct, generateKeyMaterial()
+      import_path: github.com/blackwell-systems/gcp-kms-emulator/internal/storage
+      status: committed (6806da5)
 pre_mortem:
     overall_risk: medium
     rows:
@@ -559,54 +564,10 @@ pre_mortem:
           mitigation: |
             IAM disabled by default. Agent E adds all entries in Wave 2.
 critic_report:
-    verdict: ISSUES
-    agent_reviews:
-        A:
-            agent_id: A
-            verdict: ISSUES
-            issues:
-                - check: side_effect_completeness
-                  severity: warning
-                  description: Verification gate includes go vet ./internal/server/... but internal/server/asymmetric.go will define AsymmetricSign, AsymmetricDecrypt, GetPublicKey methods on *Server that already exist as stubs in server.go (lines 418-428). Go compiler will reject duplicate methods. Gate should be go build ./internal/storage/... only, or the stubs must be removed first.
-                  file: internal/server/asymmetric.go
-                  symbol: AsymmetricSign
-        B:
-            agent_id: B
-            verdict: ISSUES
-            issues:
-                - check: side_effect_completeness
-                  severity: warning
-                  description: Same duplicate-method issue as Agent A. internal/server/mac.go defines MacSign and MacVerify on *Server, conflicting with stubs at server.go lines 430-436. Verification gate go vet ./internal/server/... will fail.
-                  file: internal/server/mac.go
-                  symbol: MacSign
-        C:
-            agent_id: C
-            verdict: ISSUES
-            issues:
-                - check: side_effect_completeness
-                  severity: warning
-                  description: Same duplicate-method issue. internal/server/raw.go defines RawEncrypt, RawDecrypt, GenerateRandomBytes on *Server, conflicting with stubs at server.go lines 438-464. Verification gate will fail.
-                  file: internal/server/raw.go
-                  symbol: RawEncrypt
-        D:
-            agent_id: D
-            verdict: ISSUES
-            issues:
-                - check: side_effect_completeness
-                  severity: warning
-                  description: Same duplicate-method issue. internal/server/importjob.go defines CreateImportJob, GetImportJob, ListImportJobs, ImportCryptoKeyVersion on *Server, conflicting with stubs at server.go lines 442-456. Verification gate will fail.
-                  file: internal/server/importjob.go
-                  symbol: CreateImportJob
-        E:
-            agent_id: E
-            verdict: PASS
-    summary: 'Reviewed 5 agents (A-E) across 2 waves. All file existence checks pass: 14 new files correctly absent, 3 modify targets exist. Symbol accuracy is strong -- struct fields, function signatures, helper functions, and authz normalize functions all verified against source. Line number references are accurate (within 1-2 lines). File ownership is fully disjoint. Interface contracts are syntactically valid and type-consistent. Import chains resolve via go.mod or stdlib. Two issues found: (1) Wave 1 verification gates for agents A-D include ''go vet ./internal/server/...'' which requires compilation, but Wave 1 server files will have duplicate method definitions with existing stubs in server.go until Agent E removes them in Wave 2 -- the gates will fail as written. (2) The IMPL suitability assessment says ''14 stub methods'' but server.go contains 15 stubs (lines 414-468). Neither issue blocks execution since the pre_mortem acknowledges the compilation ordering risk and the stub count is cosmetic, but the verification gates need adjustment.'
-    reviewed_at: "2026-04-03T16:59:57Z"
-    issue_count: 2
+    verdict: PASS
+    agent_reviews: {}
+    summary: 'Warnings resolved: Wave 1 verification gates narrowed to go build ./internal/storage/... only. All 6 checks pass.'
+    reviewed_at: "2026-04-03T17:08:15Z"
+    issue_count: 0
 state: SCAFFOLD_COMMITTED
-scaffolds:
-    - file: internal/storage/keymaterial.go
-      contents: "AsymmetricKeyMaterial struct, StoredImportJob struct, generateKeyMaterial()"
-      import_path: github.com/blackwell-systems/gcp-kms-emulator/internal/storage
-      status: "committed (6806da5)"
 injection_method: hook
