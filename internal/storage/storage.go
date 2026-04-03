@@ -40,10 +40,13 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"strings"
 	"sync"
 	"time"
 
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
+	"google.golang.org/protobuf/types/known/durationpb"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
@@ -63,14 +66,18 @@ type StoredKeyRing struct {
 
 // StoredCryptoKey represents a crypto key and its versions
 type StoredCryptoKey struct {
-	Name            string
-	CreateTime      time.Time
-	Purpose         kmspb.CryptoKey_CryptoKeyPurpose
-	PrimaryVersion  string
-	Versions        map[string]*StoredCryptoKeyVersion
-	NextVersionID   int64
-	VersionTemplate *kmspb.CryptoKeyVersionTemplate
-	Labels          map[string]string
+	Name                            string
+	CreateTime                      time.Time
+	Purpose                         kmspb.CryptoKey_CryptoKeyPurpose
+	PrimaryVersion                  string
+	Versions                        map[string]*StoredCryptoKeyVersion
+	NextVersionID                   int64
+	VersionTemplate                 *kmspb.CryptoKeyVersionTemplate
+	Labels                          map[string]string
+	RotationPeriod                  *durationpb.Duration
+	NextRotationTime                *timestamppb.Timestamp
+	DestroyScheduledDuration        *durationpb.Duration
+	DestroyScheduledDurationDefault *durationpb.Duration
 }
 
 // StoredCryptoKeyVersion represents a single version of a crypto key
@@ -82,6 +89,7 @@ type StoredCryptoKeyVersion struct {
 	SymmetricKey  []byte                 // AES key for symmetric encryption
 	AsymmetricKey *AsymmetricKeyMaterial // RSA/EC key material for asymmetric operations
 	HMACKey       []byte                 // HMAC key for MAC operations
+	DestroyTime   time.Time              // Time when version will be destroyed (DESTROY_SCHEDULED state)
 }
 
 // NewStorage creates a new storage instance
@@ -132,17 +140,20 @@ func (s *Storage) GetKeyRing(name string) (*kmspb.KeyRing, error) {
 	}, nil
 }
 
-// ListKeyRings lists all keyrings in a location
+// ListKeyRings lists all keyrings under a given parent location
 func (s *Storage) ListKeyRings(parent string) ([]*kmspb.KeyRing, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
+	prefix := parent + "/keyRings/"
 	var keyrings []*kmspb.KeyRing
 	for _, kr := range s.keyrings {
-		keyrings = append(keyrings, &kmspb.KeyRing{
-			Name:       kr.Name,
-			CreateTime: timestamppb.New(kr.CreateTime),
-		})
+		if strings.HasPrefix(kr.Name, prefix) {
+			keyrings = append(keyrings, &kmspb.KeyRing{
+				Name:       kr.Name,
+				CreateTime: timestamppb.New(kr.CreateTime),
+			})
+		}
 	}
 
 	return keyrings, nil
@@ -152,6 +163,11 @@ func (s *Storage) ListKeyRings(parent string) ([]*kmspb.KeyRing, error) {
 func (s *Storage) CreateCryptoKey(keyringName, keyID string, purpose kmspb.CryptoKey_CryptoKeyPurpose, versionTemplate *kmspb.CryptoKeyVersionTemplate, labels map[string]string) (*kmspb.CryptoKey, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Reject unspecified purpose
+	if purpose == kmspb.CryptoKey_CRYPTO_KEY_PURPOSE_UNSPECIFIED {
+		return nil, &ErrFailedPrecondition{Message: "crypto_key.purpose is required"}
+	}
 
 	keyring, exists := s.keyrings[keyringName]
 	if !exists {
@@ -188,15 +204,18 @@ func (s *Storage) CreateCryptoKey(keyringName, keyID string, purpose kmspb.Crypt
 		HMACKey:       hmacKey,
 	}
 
+	defaultDestroyDuration := durationpb.New(30 * 24 * time.Hour)
 	cryptoKey := &StoredCryptoKey{
-		Name:            keyName,
-		CreateTime:      now,
-		Purpose:         purpose,
-		PrimaryVersion:  versionName,
-		Versions:        map[string]*StoredCryptoKeyVersion{versionName: version},
-		NextVersionID:   2,
-		VersionTemplate: versionTemplate,
-		Labels:          labels,
+		Name:                            keyName,
+		CreateTime:                      now,
+		Purpose:                         purpose,
+		PrimaryVersion:                  versionName,
+		Versions:                        map[string]*StoredCryptoKeyVersion{versionName: version},
+		NextVersionID:                   2,
+		VersionTemplate:                 versionTemplate,
+		Labels:                          labels,
+		DestroyScheduledDuration:        defaultDestroyDuration,
+		DestroyScheduledDurationDefault: defaultDestroyDuration,
 	}
 
 	keyring.CryptoKeys[keyName] = cryptoKey
@@ -206,13 +225,16 @@ func (s *Storage) CreateCryptoKey(keyringName, keyID string, purpose kmspb.Crypt
 		CreateTime: timestamppb.New(now),
 		Purpose:    purpose,
 		Primary: &kmspb.CryptoKeyVersion{
-			Name:       versionName,
-			State:      kmspb.CryptoKeyVersion_ENABLED,
-			CreateTime: timestamppb.New(now),
-			Algorithm:  algorithm,
+			Name:            versionName,
+			State:           kmspb.CryptoKeyVersion_ENABLED,
+			CreateTime:      timestamppb.New(now),
+			Algorithm:       algorithm,
+			ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+			GenerateTime:    timestamppb.New(now),
 		},
-		VersionTemplate: versionTemplate,
-		Labels:          labels,
+		VersionTemplate:          versionTemplate,
+		Labels:                   labels,
+		DestroyScheduledDuration: defaultDestroyDuration,
 	}, nil
 }
 
@@ -224,19 +246,7 @@ func (s *Storage) GetCryptoKey(name string) (*kmspb.CryptoKey, error) {
 	for _, keyring := range s.keyrings {
 		if cryptoKey, exists := keyring.CryptoKeys[name]; exists {
 			primary := cryptoKey.Versions[cryptoKey.PrimaryVersion]
-			return &kmspb.CryptoKey{
-				Name:       cryptoKey.Name,
-				CreateTime: timestamppb.New(cryptoKey.CreateTime),
-				Purpose:    cryptoKey.Purpose,
-				Primary: &kmspb.CryptoKeyVersion{
-					Name:       primary.Name,
-					State:      primary.State,
-					CreateTime: timestamppb.New(primary.CreateTime),
-					Algorithm:  primary.Algorithm,
-				},
-				VersionTemplate: cryptoKey.VersionTemplate,
-				Labels:          cryptoKey.Labels,
-			}, nil
+			return storedKeyToProto(cryptoKey, primary), nil
 		}
 	}
 
@@ -244,7 +254,7 @@ func (s *Storage) GetCryptoKey(name string) (*kmspb.CryptoKey, error) {
 }
 
 // Encrypt encrypts plaintext using a crypto key
-func (s *Storage) Encrypt(keyName string, plaintext []byte) ([]byte, error) {
+func (s *Storage) Encrypt(keyName string, plaintext []byte, aad []byte) (ciphertext []byte, versionName string, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -257,40 +267,44 @@ func (s *Storage) Encrypt(keyName string, plaintext []byte) ([]byte, error) {
 	}
 
 	if cryptoKey == nil {
-		return nil, &ErrNotFound{Resource: keyName}
+		return nil, "", &ErrNotFound{Resource: keyName}
+	}
+
+	if cryptoKey.Purpose != kmspb.CryptoKey_ENCRYPT_DECRYPT {
+		return nil, "", &ErrFailedPrecondition{Message: "key purpose must be ENCRYPT_DECRYPT"}
 	}
 
 	primaryVersion := cryptoKey.Versions[cryptoKey.PrimaryVersion]
 	if primaryVersion == nil {
-		return nil, fmt.Errorf("primary version not found")
+		return nil, "", fmt.Errorf("primary version not found")
 	}
 
 	if primaryVersion.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, fmt.Errorf("primary version is not enabled")
+		return nil, "", fmt.Errorf("primary version is not enabled")
 	}
 
 	// AES-GCM encryption
 	block, err := aes.NewCipher(primaryVersion.SymmetricKey)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create cipher: %w", err)
+		return nil, "", fmt.Errorf("failed to create cipher: %w", err)
 	}
 
 	gcm, err := cipher.NewGCM(block)
 	if err != nil {
-		return nil, fmt.Errorf("failed to create GCM: %w", err)
+		return nil, "", fmt.Errorf("failed to create GCM: %w", err)
 	}
 
 	nonce := make([]byte, gcm.NonceSize())
 	if _, err := io.ReadFull(rand.Reader, nonce); err != nil {
-		return nil, fmt.Errorf("failed to generate nonce: %w", err)
+		return nil, "", fmt.Errorf("failed to generate nonce: %w", err)
 	}
 
-	ciphertext := gcm.Seal(nonce, nonce, plaintext, nil)
-	return ciphertext, nil
+	ct := gcm.Seal(nonce, nonce, plaintext, aad)
+	return ct, cryptoKey.PrimaryVersion, nil
 }
 
 // Decrypt decrypts ciphertext using a crypto key
-func (s *Storage) Decrypt(keyName string, ciphertext []byte) ([]byte, error) {
+func (s *Storage) Decrypt(keyName string, ciphertext []byte, aad []byte) (plaintext []byte, usedVersionName string, err error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -303,7 +317,11 @@ func (s *Storage) Decrypt(keyName string, ciphertext []byte) ([]byte, error) {
 	}
 
 	if cryptoKey == nil {
-		return nil, &ErrNotFound{Resource: keyName}
+		return nil, "", &ErrNotFound{Resource: keyName}
+	}
+
+	if cryptoKey.Purpose != kmspb.CryptoKey_ENCRYPT_DECRYPT {
+		return nil, "", &ErrFailedPrecondition{Message: "key purpose must be ENCRYPT_DECRYPT"}
 	}
 
 	// Try all versions (in case it was encrypted with a non-primary version)
@@ -312,16 +330,16 @@ func (s *Storage) Decrypt(keyName string, ciphertext []byte) ([]byte, error) {
 			continue
 		}
 
-		plaintext, err := s.decryptWithVersion(version, ciphertext)
-		if err == nil {
-			return plaintext, nil
+		pt, decErr := s.decryptWithVersion(version, ciphertext, aad)
+		if decErr == nil {
+			return pt, version.Name, nil
 		}
 	}
 
-	return nil, fmt.Errorf("failed to decrypt with any key version")
+	return nil, "", fmt.Errorf("failed to decrypt with any key version")
 }
 
-func (s *Storage) decryptWithVersion(version *StoredCryptoKeyVersion, ciphertext []byte) ([]byte, error) {
+func (s *Storage) decryptWithVersion(version *StoredCryptoKeyVersion, ciphertext []byte, aad []byte) ([]byte, error) {
 	block, err := aes.NewCipher(version.SymmetricKey)
 	if err != nil {
 		return nil, err
@@ -336,8 +354,8 @@ func (s *Storage) decryptWithVersion(version *StoredCryptoKeyVersion, ciphertext
 		return nil, fmt.Errorf("ciphertext too short")
 	}
 
-	nonce, ciphertext := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
-	return gcm.Open(nil, nonce, ciphertext, nil)
+	nonce, ct := ciphertext[:gcm.NonceSize()], ciphertext[gcm.NonceSize():]
+	return gcm.Open(nil, nonce, ct, aad)
 }
 
 // ListCryptoKeys lists all crypto keys in a keyring
@@ -353,26 +371,14 @@ func (s *Storage) ListCryptoKeys(keyringName string) ([]*kmspb.CryptoKey, error)
 	var cryptoKeys []*kmspb.CryptoKey
 	for _, ck := range keyring.CryptoKeys {
 		primary := ck.Versions[ck.PrimaryVersion]
-		cryptoKeys = append(cryptoKeys, &kmspb.CryptoKey{
-			Name:       ck.Name,
-			CreateTime: timestamppb.New(ck.CreateTime),
-			Purpose:    ck.Purpose,
-			Primary: &kmspb.CryptoKeyVersion{
-				Name:       primary.Name,
-				State:      primary.State,
-				CreateTime: timestamppb.New(primary.CreateTime),
-				Algorithm:  primary.Algorithm,
-			},
-			VersionTemplate: ck.VersionTemplate,
-			Labels:          ck.Labels,
-		})
+		cryptoKeys = append(cryptoKeys, storedKeyToProto(ck, primary))
 	}
 
 	return cryptoKeys, nil
 }
 
 // CreateCryptoKeyVersion creates a new version for an existing crypto key
-func (s *Storage) CreateCryptoKeyVersion(keyName string) (*kmspb.CryptoKeyVersion, error) {
+func (s *Storage) CreateCryptoKeyVersion(keyName string, req *kmspb.CryptoKeyVersion) (*kmspb.CryptoKeyVersion, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -396,6 +402,10 @@ func (s *Storage) CreateCryptoKeyVersion(keyName string) (*kmspb.CryptoKeyVersio
 	if cryptoKey.VersionTemplate != nil && cryptoKey.VersionTemplate.Algorithm != kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED {
 		algorithm = cryptoKey.VersionTemplate.Algorithm
 	}
+	// If req specifies an algorithm, override the template algorithm
+	if req != nil && req.Algorithm != kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED {
+		algorithm = req.Algorithm
+	}
 
 	symmetricKey, asymKey, hmacKey, err := generateKeyMaterial(algorithm)
 	if err != nil {
@@ -416,10 +426,12 @@ func (s *Storage) CreateCryptoKeyVersion(keyName string) (*kmspb.CryptoKeyVersio
 	cryptoKey.NextVersionID++
 
 	return &kmspb.CryptoKeyVersion{
-		Name:       versionName,
-		State:      kmspb.CryptoKeyVersion_ENABLED,
-		CreateTime: timestamppb.New(now),
-		Algorithm:  algorithm,
+		Name:            versionName,
+		State:           kmspb.CryptoKeyVersion_ENABLED,
+		CreateTime:      timestamppb.New(now),
+		Algorithm:       algorithm,
+		ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+		GenerateTime:    timestamppb.New(now),
 	}, nil
 }
 
@@ -452,19 +464,7 @@ func (s *Storage) UpdateCryptoKeyPrimaryVersion(keyName, versionName string) (*k
 	cryptoKey.PrimaryVersion = versionName
 
 	primary := cryptoKey.Versions[cryptoKey.PrimaryVersion]
-	return &kmspb.CryptoKey{
-		Name:       cryptoKey.Name,
-		CreateTime: timestamppb.New(cryptoKey.CreateTime),
-		Purpose:    cryptoKey.Purpose,
-		Primary: &kmspb.CryptoKeyVersion{
-			Name:       primary.Name,
-			State:      primary.State,
-			CreateTime: timestamppb.New(primary.CreateTime),
-			Algorithm:  primary.Algorithm,
-		},
-		VersionTemplate: cryptoKey.VersionTemplate,
-		Labels:          cryptoKey.Labels,
-	}, nil
+	return storedKeyToProto(cryptoKey, primary), nil
 }
 
 // GetCryptoKeyVersion retrieves a specific crypto key version
@@ -476,10 +476,12 @@ func (s *Storage) GetCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersi
 		for _, cryptoKey := range keyring.CryptoKeys {
 			if version, exists := cryptoKey.Versions[versionName]; exists {
 				return &kmspb.CryptoKeyVersion{
-					Name:       version.Name,
-					State:      version.State,
-					CreateTime: timestamppb.New(version.CreateTime),
-					Algorithm:  version.Algorithm,
+					Name:            version.Name,
+					State:           version.State,
+					CreateTime:      timestamppb.New(version.CreateTime),
+					Algorithm:       version.Algorithm,
+					ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+					GenerateTime:    timestamppb.New(version.CreateTime),
 				}, nil
 			}
 		}
@@ -508,10 +510,12 @@ func (s *Storage) ListCryptoKeyVersions(keyName string) ([]*kmspb.CryptoKeyVersi
 	var versions []*kmspb.CryptoKeyVersion
 	for _, version := range cryptoKey.Versions {
 		versions = append(versions, &kmspb.CryptoKeyVersion{
-			Name:       version.Name,
-			State:      version.State,
-			CreateTime: timestamppb.New(version.CreateTime),
-			Algorithm:  version.Algorithm,
+			Name:            version.Name,
+			State:           version.State,
+			CreateTime:      timestamppb.New(version.CreateTime),
+			Algorithm:       version.Algorithm,
+			ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+			GenerateTime:    timestamppb.New(version.CreateTime),
 		})
 	}
 
@@ -519,19 +523,43 @@ func (s *Storage) ListCryptoKeyVersions(keyName string) ([]*kmspb.CryptoKeyVersi
 }
 
 // UpdateCryptoKeyVersion updates the state of a crypto key version
-func (s *Storage) UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoKeyVersion_CryptoKeyVersionState) (*kmspb.CryptoKeyVersion, error) {
+func (s *Storage) UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoKeyVersion_CryptoKeyVersionState, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKeyVersion, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
+
+	// Validate mask contains "state"
+	if mask != nil {
+		hasState := false
+		for _, p := range mask.Paths {
+			if p == "state" {
+				hasState = true
+				break
+			}
+		}
+		if !hasState {
+			return nil, &ErrFailedPrecondition{Message: "update_mask must contain state"}
+		}
+	}
 
 	for _, keyring := range s.keyrings {
 		for _, cryptoKey := range keyring.CryptoKeys {
 			if version, exists := cryptoKey.Versions[versionName]; exists {
+				// Validate current state: must be ENABLED or DISABLED
+				if version.State != kmspb.CryptoKeyVersion_ENABLED && version.State != kmspb.CryptoKeyVersion_DISABLED {
+					return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("cannot update version in state %v; must be ENABLED or DISABLED", version.State)}
+				}
+				// Validate target state: must be ENABLED or DISABLED
+				if state != kmspb.CryptoKeyVersion_ENABLED && state != kmspb.CryptoKeyVersion_DISABLED {
+					return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("target state %v is not permitted; must be ENABLED or DISABLED", state)}
+				}
 				version.State = state
 				return &kmspb.CryptoKeyVersion{
-					Name:       version.Name,
-					State:      version.State,
-					CreateTime: timestamppb.New(version.CreateTime),
-					Algorithm:  version.Algorithm,
+					Name:            version.Name,
+					State:           version.State,
+					CreateTime:      timestamppb.New(version.CreateTime),
+					Algorithm:       version.Algorithm,
+					ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+					GenerateTime:    timestamppb.New(version.CreateTime),
 				}, nil
 			}
 		}
@@ -548,16 +576,34 @@ func (s *Storage) DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 	for _, keyring := range s.keyrings {
 		for _, cryptoKey := range keyring.CryptoKeys {
 			if version, exists := cryptoKey.Versions[versionName]; exists {
-				if version.State == kmspb.CryptoKeyVersion_DESTROYED || version.State == kmspb.CryptoKeyVersion_DESTROY_SCHEDULED {
-					return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version already destroyed or scheduled: %s", versionName)}
+				if version.State == kmspb.CryptoKeyVersion_DESTROYED {
+					return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version already destroyed: %s", versionName)}
 				}
 
+				// Idempotent: if already DESTROY_SCHEDULED, return as-is
+				if version.State == kmspb.CryptoKeyVersion_DESTROY_SCHEDULED {
+					return &kmspb.CryptoKeyVersion{
+						Name:            version.Name,
+						State:           version.State,
+						CreateTime:      timestamppb.New(version.CreateTime),
+						Algorithm:       version.Algorithm,
+						ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+						GenerateTime:    timestamppb.New(version.CreateTime),
+						DestroyTime:     timestamppb.New(version.DestroyTime),
+					}, nil
+				}
+
+				// Schedule destruction
+				version.DestroyTime = time.Now().Add(30 * 24 * time.Hour)
 				version.State = kmspb.CryptoKeyVersion_DESTROY_SCHEDULED
 				return &kmspb.CryptoKeyVersion{
-					Name:       version.Name,
-					State:      version.State,
-					CreateTime: timestamppb.New(version.CreateTime),
-					Algorithm:  version.Algorithm,
+					Name:            version.Name,
+					State:           version.State,
+					CreateTime:      timestamppb.New(version.CreateTime),
+					Algorithm:       version.Algorithm,
+					ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+					GenerateTime:    timestamppb.New(version.CreateTime),
+					DestroyTime:     timestamppb.New(version.DestroyTime),
 				}, nil
 			}
 		}
@@ -580,10 +626,12 @@ func (s *Storage) RestoreCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 
 				version.State = kmspb.CryptoKeyVersion_DISABLED
 				return &kmspb.CryptoKeyVersion{
-					Name:       version.Name,
-					State:      version.State,
-					CreateTime: timestamppb.New(version.CreateTime),
-					Algorithm:  version.Algorithm,
+					Name:            version.Name,
+					State:           version.State,
+					CreateTime:      timestamppb.New(version.CreateTime),
+					Algorithm:       version.Algorithm,
+					ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+					GenerateTime:    timestamppb.New(version.CreateTime),
 				}, nil
 			}
 		}
@@ -592,8 +640,8 @@ func (s *Storage) RestoreCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 	return nil, &ErrNotFound{Resource: versionName}
 }
 
-// UpdateCryptoKey updates metadata of a crypto key
-func (s *Storage) UpdateCryptoKey(keyName string, labels map[string]string) (*kmspb.CryptoKey, error) {
+// UpdateCryptoKey updates metadata of a crypto key using a field mask
+func (s *Storage) UpdateCryptoKey(keyName string, key *kmspb.CryptoKey, mask *fieldmaskpb.FieldMask) (*kmspb.CryptoKey, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 
@@ -609,24 +657,69 @@ func (s *Storage) UpdateCryptoKey(keyName string, labels map[string]string) (*km
 		return nil, &ErrNotFound{Resource: keyName}
 	}
 
-	if labels != nil {
-		cryptoKey.Labels = labels
+	if mask != nil {
+		for _, path := range mask.Paths {
+			switch path {
+			case "labels":
+				cryptoKey.Labels = key.Labels
+			case "rotation_period":
+				cryptoKey.RotationPeriod = key.GetRotationPeriod()
+			case "next_rotation_time":
+				cryptoKey.NextRotationTime = key.NextRotationTime
+			case "version_template":
+				cryptoKey.VersionTemplate = key.VersionTemplate
+			case "destroy_scheduled_duration":
+				cryptoKey.DestroyScheduledDuration = key.DestroyScheduledDuration
+			// Unrecognised paths are silently ignored
+			}
+		}
 	}
 
 	primary := cryptoKey.Versions[cryptoKey.PrimaryVersion]
-	return &kmspb.CryptoKey{
-		Name:       cryptoKey.Name,
-		CreateTime: timestamppb.New(cryptoKey.CreateTime),
-		Purpose:    cryptoKey.Purpose,
+	return storedKeyToProto(cryptoKey, primary), nil
+}
+
+// findKeyAndVersion returns both the parent StoredCryptoKey and the
+// StoredCryptoKeyVersion for a version resource name.
+// Caller must hold at least s.mu.RLock.
+// Returns (nil, nil) if not found.
+func (s *Storage) findKeyAndVersion(versionName string) (*StoredCryptoKey, *StoredCryptoKeyVersion) {
+	for _, keyring := range s.keyrings {
+		for _, cryptoKey := range keyring.CryptoKeys {
+			if version, exists := cryptoKey.Versions[versionName]; exists {
+				return cryptoKey, version
+			}
+		}
+	}
+	return nil, nil
+}
+
+// storedKeyToProto converts a StoredCryptoKey to its proto representation.
+// primary is the primary StoredCryptoKeyVersion to embed.
+func storedKeyToProto(ck *StoredCryptoKey, primary *StoredCryptoKeyVersion) *kmspb.CryptoKey {
+	proto := &kmspb.CryptoKey{
+		Name:       ck.Name,
+		CreateTime: timestamppb.New(ck.CreateTime),
+		Purpose:    ck.Purpose,
 		Primary: &kmspb.CryptoKeyVersion{
-			Name:       primary.Name,
-			State:      primary.State,
-			CreateTime: timestamppb.New(primary.CreateTime),
-			Algorithm:  primary.Algorithm,
+			Name:            primary.Name,
+			State:           primary.State,
+			CreateTime:      timestamppb.New(primary.CreateTime),
+			Algorithm:       primary.Algorithm,
+			ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
+			GenerateTime:    timestamppb.New(primary.CreateTime),
 		},
-		VersionTemplate: cryptoKey.VersionTemplate,
-		Labels:          cryptoKey.Labels,
-	}, nil
+		VersionTemplate:          ck.VersionTemplate,
+		Labels:                   ck.Labels,
+		NextRotationTime:         ck.NextRotationTime,
+		DestroyScheduledDuration: ck.DestroyScheduledDuration,
+	}
+	if ck.RotationPeriod != nil {
+		proto.RotationSchedule = &kmspb.CryptoKey_RotationPeriod{
+			RotationPeriod: ck.RotationPeriod,
+		}
+	}
+	return proto
 }
 
 // Clear removes all stored data (for testing)

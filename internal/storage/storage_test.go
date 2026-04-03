@@ -231,7 +231,7 @@ func TestEncryptDecrypt(t *testing.T) {
 	}
 
 	plaintext := []byte("Hello, KMS!")
-	ciphertext, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext)
+	ciphertext, _, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext, nil)
 	if err != nil {
 		t.Fatalf("Encrypt failed: %v", err)
 	}
@@ -240,7 +240,7 @@ func TestEncryptDecrypt(t *testing.T) {
 		t.Error("Ciphertext should not be empty")
 	}
 
-	decrypted, err := s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext)
+	decrypted, _, err := s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext, nil)
 	if err != nil {
 		t.Fatalf("Decrypt failed: %v", err)
 	}
@@ -269,7 +269,7 @@ func TestCreateCryptoKeyVersion(t *testing.T) {
 		t.Fatalf("CreateCryptoKey failed: %v", err)
 	}
 
-	version, err := s.CreateCryptoKeyVersion("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1")
+	version, err := s.CreateCryptoKeyVersion("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", nil)
 	if err != nil {
 		t.Fatalf("CreateCryptoKeyVersion failed: %v", err)
 	}
@@ -302,7 +302,7 @@ func TestUpdateCryptoKeyPrimaryVersion(t *testing.T) {
 		t.Fatalf("CreateCryptoKey failed: %v", err)
 	}
 
-	_, err = s.CreateCryptoKeyVersion("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1")
+	_, err = s.CreateCryptoKeyVersion("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", nil)
 	if err != nil {
 		t.Fatalf("CreateCryptoKeyVersion failed: %v", err)
 	}
@@ -340,12 +340,12 @@ func TestDecryptWithMultipleVersions(t *testing.T) {
 	}
 
 	plaintext := []byte("Test versioning")
-	ciphertext1, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext)
+	ciphertext1, _, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext, nil)
 	if err != nil {
 		t.Fatalf("Encrypt with v1 failed: %v", err)
 	}
 
-	_, err = s.CreateCryptoKeyVersion("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1")
+	_, err = s.CreateCryptoKeyVersion("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", nil)
 	if err != nil {
 		t.Fatalf("CreateCryptoKeyVersion failed: %v", err)
 	}
@@ -358,12 +358,12 @@ func TestDecryptWithMultipleVersions(t *testing.T) {
 		t.Fatalf("UpdateCryptoKeyPrimaryVersion failed: %v", err)
 	}
 
-	ciphertext2, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext)
+	ciphertext2, _, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext, nil)
 	if err != nil {
 		t.Fatalf("Encrypt with v2 failed: %v", err)
 	}
 
-	decrypted1, err := s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext1)
+	decrypted1, _, err := s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext1, nil)
 	if err != nil {
 		t.Fatalf("Decrypt v1 ciphertext failed: %v", err)
 	}
@@ -372,7 +372,7 @@ func TestDecryptWithMultipleVersions(t *testing.T) {
 		t.Errorf("Expected plaintext '%s', got '%s'", string(plaintext), string(decrypted1))
 	}
 
-	decrypted2, err := s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext2)
+	decrypted2, _, err := s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext2, nil)
 	if err != nil {
 		t.Fatalf("Decrypt v2 ciphertext failed: %v", err)
 	}
@@ -405,11 +405,11 @@ func TestConcurrentAccess(t *testing.T) {
 	for i := 0; i < 10; i++ {
 		go func() {
 			plaintext := []byte("Concurrent test")
-			ciphertext, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext)
+			ciphertext, _, err := s.Encrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", plaintext, nil)
 			if err != nil {
 				t.Errorf("Concurrent Encrypt failed: %v", err)
 			}
-			_, err = s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext)
+			_, _, err = s.Decrypt("projects/test/locations/global/keyRings/ring1/cryptoKeys/key1", ciphertext, nil)
 			if err != nil {
 				t.Errorf("Concurrent Decrypt failed: %v", err)
 			}
