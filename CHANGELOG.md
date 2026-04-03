@@ -7,6 +7,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- **Refactor**: Replaced `strings.Contains` error matching with typed storage errors (`ErrNotFound`, `ErrAlreadyExists`, `ErrFailedPrecondition`)
+- **Refactor**: Added `requireField()` and `storageErr()` helpers, reducing boilerplate in all 17 RPC methods
+- Added `authz` package documentation
+- Fixed root package declaration (`package main` → `package gcp_kms_emulator`) for library importability
+
+### Added
+- `Register()` composition hook for unified `gcp-emulator`
+- `NewGatewayHandler()` for mounting KMS REST gateway in unified HTTP server
+- `gateway.Handler()` method for embedding in parent HTTP multiplexer
+
 ## [0.3.0] - 2026-01-28
 
 ### Changed
