@@ -40,6 +40,8 @@ import (
 	"crypto/rand"
 	"fmt"
 	"io"
+	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -49,6 +51,35 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
+
+// paginatePage slices items using integer-offset page tokens.
+// pageSize 0 or negative defaults to 100; max 1000. Returns (page, nextToken, err).
+func paginatePage[T any](items []T, pageToken string, pageSize int32) ([]T, string, error) {
+	offset := 0
+	if pageToken != "" {
+		n, err := strconv.Atoi(pageToken)
+		if err != nil || n < 0 {
+			return nil, "", fmt.Errorf("invalid page_token")
+		}
+		offset = n
+	}
+	size := int(pageSize)
+	if size <= 0 || size > 1000 {
+		size = 100
+	}
+	if offset >= len(items) {
+		return nil, "", nil
+	}
+	end := offset + size
+	if end > len(items) {
+		end = len(items)
+	}
+	nextToken := ""
+	if end < len(items) {
+		nextToken = strconv.Itoa(end)
+	}
+	return items[offset:end], nextToken, nil
+}
 
 // Storage manages in-memory KMS resources
 type Storage struct {
@@ -140,23 +171,24 @@ func (s *Storage) GetKeyRing(name string) (*kmspb.KeyRing, error) {
 	}, nil
 }
 
-// ListKeyRings lists all keyrings under a given parent location
-func (s *Storage) ListKeyRings(parent string) ([]*kmspb.KeyRing, error) {
+// ListKeyRings lists all keyrings under a given parent location with pagination.
+func (s *Storage) ListKeyRings(parent string, pageSize int32, pageToken string) ([]*kmspb.KeyRing, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	prefix := parent + "/keyRings/"
-	var keyrings []*kmspb.KeyRing
+	var all []*kmspb.KeyRing
 	for _, kr := range s.keyrings {
 		if strings.HasPrefix(kr.Name, prefix) {
-			keyrings = append(keyrings, &kmspb.KeyRing{
+			all = append(all, &kmspb.KeyRing{
 				Name:       kr.Name,
 				CreateTime: timestamppb.New(kr.CreateTime),
 			})
 		}
 	}
-
-	return keyrings, nil
+	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
+	page, next, err := paginatePage(all, pageToken, pageSize)
+	return page, next, err
 }
 
 // CreateCryptoKey creates a new crypto key
@@ -358,23 +390,24 @@ func (s *Storage) decryptWithVersion(version *StoredCryptoKeyVersion, ciphertext
 	return gcm.Open(nil, nonce, ct, aad)
 }
 
-// ListCryptoKeys lists all crypto keys in a keyring
-func (s *Storage) ListCryptoKeys(keyringName string) ([]*kmspb.CryptoKey, error) {
+// ListCryptoKeys lists all crypto keys in a keyring with pagination.
+func (s *Storage) ListCryptoKeys(keyringName string, pageSize int32, pageToken string) ([]*kmspb.CryptoKey, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	keyring, exists := s.keyrings[keyringName]
 	if !exists {
-		return nil, &ErrNotFound{Resource: keyringName}
+		return nil, "", &ErrNotFound{Resource: keyringName}
 	}
 
-	var cryptoKeys []*kmspb.CryptoKey
+	var all []*kmspb.CryptoKey
 	for _, ck := range keyring.CryptoKeys {
 		primary := ck.Versions[ck.PrimaryVersion]
-		cryptoKeys = append(cryptoKeys, storedKeyToProto(ck, primary))
+		all = append(all, storedKeyToProto(ck, primary))
 	}
-
-	return cryptoKeys, nil
+	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
+	page, next, err := paginatePage(all, pageToken, pageSize)
+	return page, next, err
 }
 
 // CreateCryptoKeyVersion creates a new version for an existing crypto key
@@ -490,8 +523,8 @@ func (s *Storage) GetCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersi
 	return nil, &ErrNotFound{Resource: versionName}
 }
 
-// ListCryptoKeyVersions lists all versions of a crypto key
-func (s *Storage) ListCryptoKeyVersions(keyName string) ([]*kmspb.CryptoKeyVersion, error) {
+// ListCryptoKeyVersions lists all versions of a crypto key with pagination.
+func (s *Storage) ListCryptoKeyVersions(keyName string, pageSize int32, pageToken string) ([]*kmspb.CryptoKeyVersion, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
@@ -504,12 +537,12 @@ func (s *Storage) ListCryptoKeyVersions(keyName string) ([]*kmspb.CryptoKeyVersi
 	}
 
 	if cryptoKey == nil {
-		return nil, &ErrNotFound{Resource: keyName}
+		return nil, "", &ErrNotFound{Resource: keyName}
 	}
 
-	var versions []*kmspb.CryptoKeyVersion
+	var all []*kmspb.CryptoKeyVersion
 	for _, version := range cryptoKey.Versions {
-		versions = append(versions, &kmspb.CryptoKeyVersion{
+		all = append(all, &kmspb.CryptoKeyVersion{
 			Name:            version.Name,
 			State:           version.State,
 			CreateTime:      timestamppb.New(version.CreateTime),
@@ -518,8 +551,9 @@ func (s *Storage) ListCryptoKeyVersions(keyName string) ([]*kmspb.CryptoKeyVersi
 			GenerateTime:    timestamppb.New(version.CreateTime),
 		})
 	}
-
-	return versions, nil
+	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
+	page, next, err := paginatePage(all, pageToken, pageSize)
+	return page, next, err
 }
 
 // UpdateCryptoKeyVersion updates the state of a crypto key version

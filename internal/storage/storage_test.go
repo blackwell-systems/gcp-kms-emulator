@@ -77,7 +77,7 @@ func TestListKeyRings(t *testing.T) {
 		t.Fatalf("CreateKeyRing ring2 failed: %v", err)
 	}
 
-	keyRings, err := s.ListKeyRings("projects/test/locations/global")
+	keyRings, _, err := s.ListKeyRings("projects/test/locations/global", 0, "")
 	if err != nil {
 		t.Fatalf("ListKeyRings failed: %v", err)
 	}
@@ -201,7 +201,7 @@ func TestListCryptoKeys(t *testing.T) {
 		t.Fatalf("CreateCryptoKey key2 failed: %v", err)
 	}
 
-	cryptoKeys, err := s.ListCryptoKeys("projects/test/locations/global/keyRings/ring1")
+	cryptoKeys, _, err := s.ListCryptoKeys("projects/test/locations/global/keyRings/ring1", 0, "")
 	if err != nil {
 		t.Fatalf("ListCryptoKeys failed: %v", err)
 	}

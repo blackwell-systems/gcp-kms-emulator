@@ -176,14 +176,13 @@ func (s *Server) ListKeyRings(ctx context.Context, req *kmspb.ListKeyRingsReques
 		return nil, err
 	}
 
-	keyrings, err := s.storage.ListKeyRings(req.Parent)
+	keyrings, nextToken, err := s.storage.ListKeyRings(req.Parent, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, storageErr(err)
 	}
 	return &kmspb.ListKeyRingsResponse{
 		KeyRings:      keyrings,
-		NextPageToken: "",
-		TotalSize:     int32(len(keyrings)),
+		NextPageToken: nextToken,
 	}, nil
 }
 
@@ -306,14 +305,13 @@ func (s *Server) ListCryptoKeys(ctx context.Context, req *kmspb.ListCryptoKeysRe
 		return nil, err
 	}
 
-	cryptoKeys, err := s.storage.ListCryptoKeys(req.Parent)
+	cryptoKeys, nextToken, err := s.storage.ListCryptoKeys(req.Parent, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, storageErr(err)
 	}
 	return &kmspb.ListCryptoKeysResponse{
 		CryptoKeys:    cryptoKeys,
-		NextPageToken: "",
-		TotalSize:     int32(len(cryptoKeys)),
+		NextPageToken: nextToken,
 	}, nil
 }
 
@@ -325,14 +323,13 @@ func (s *Server) ListCryptoKeyVersions(ctx context.Context, req *kmspb.ListCrypt
 		return nil, err
 	}
 
-	versions, err := s.storage.ListCryptoKeyVersions(req.Parent)
+	versions, nextToken, err := s.storage.ListCryptoKeyVersions(req.Parent, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, storageErr(err)
 	}
 	return &kmspb.ListCryptoKeyVersionsResponse{
 		CryptoKeyVersions: versions,
-		NextPageToken:     "",
-		TotalSize:         int32(len(versions)),
+		NextPageToken:     nextToken,
 	}, nil
 }
 

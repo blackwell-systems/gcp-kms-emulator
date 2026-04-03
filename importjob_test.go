@@ -128,9 +128,7 @@ func TestIntegration_ImportJobLifecycle(t *testing.T) {
 		if len(resp.ImportJobs) != 2 {
 			t.Errorf("Expected 2 import jobs, got %d", len(resp.ImportJobs))
 		}
-		if resp.TotalSize != 2 {
-			t.Errorf("Expected TotalSize 2, got %d", resp.TotalSize)
-		}
+		// TotalSize is no longer populated; page count is the authoritative check above.
 	})
 }
 

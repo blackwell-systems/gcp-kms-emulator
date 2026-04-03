@@ -7,6 +7,7 @@ import (
 	"crypto/x509"
 	"encoding/pem"
 	"fmt"
+	"sort"
 	"time"
 
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
@@ -81,21 +82,23 @@ func (s *Storage) GetImportJob(name string) (*StoredImportJob, error) {
 	return nil, &ErrNotFound{Resource: name}
 }
 
-// ListImportJobs lists all import jobs in a keyring.
-func (s *Storage) ListImportJobs(keyringName string) ([]*StoredImportJob, error) {
+// ListImportJobs lists all import jobs in a keyring with pagination.
+func (s *Storage) ListImportJobs(keyringName string, pageSize int32, pageToken string) ([]*StoredImportJob, string, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	keyring, exists := s.keyrings[keyringName]
 	if !exists {
-		return nil, &ErrNotFound{Resource: keyringName}
+		return nil, "", &ErrNotFound{Resource: keyringName}
 	}
 
-	var jobs []*StoredImportJob
+	var all []*StoredImportJob
 	for _, ij := range keyring.ImportJobs {
-		jobs = append(jobs, ij)
+		all = append(all, ij)
 	}
-	return jobs, nil
+	sort.Slice(all, func(i, j int) bool { return all[i].Name < all[j].Name })
+	page, next, err := paginatePage(all, pageToken, pageSize)
+	return page, next, err
 }
 
 // ImportCryptoKeyVersion imports a wrapped key into a new crypto key version.

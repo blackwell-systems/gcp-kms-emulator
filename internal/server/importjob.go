@@ -66,20 +66,19 @@ func (s *Server) ListImportJobs(ctx context.Context, req *kmspb.ListImportJobsRe
 		return nil, err
 	}
 
-	stored, err := s.storage.ListImportJobs(req.Parent)
+	stored, nextToken, err := s.storage.ListImportJobs(req.Parent, req.PageSize, req.PageToken)
 	if err != nil {
 		return nil, storageErr(err)
 	}
 
-	var importJobs []*kmspb.ImportJob
+	importJobs := make([]*kmspb.ImportJob, 0, len(stored))
 	for _, ij := range stored {
 		importJobs = append(importJobs, storedImportJobToProto(ij))
 	}
 
 	return &kmspb.ListImportJobsResponse{
 		ImportJobs:    importJobs,
-		NextPageToken: "",
-		TotalSize:     int32(len(importJobs)),
+		NextPageToken: nextToken,
 	}, nil
 }
 

@@ -7,6 +7,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.0] - 2026-04-03
+
+### Added
+- Pagination on all 4 List methods: `ListKeyRings`, `ListCryptoKeys`, `ListCryptoKeyVersions`, `ListImportJobs`
+  - Supports `page_size` (default 100, max 1000) and `page_token` (integer offset)
+  - Results sorted by name for stable iteration
+  - Returns `next_page_token` when more results exist
+
 ## [0.7.0] - 2026-04-03
 
 ### Fixed
