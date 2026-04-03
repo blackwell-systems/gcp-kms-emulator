@@ -7,6 +7,31 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.7.0] - 2026-04-03
+
+### Fixed
+- **Encrypt/Decrypt: AAD now passed through to AES-GCM** — `AdditionalAuthenticatedData` was previously ignored; ciphertexts encrypted with AAD can now only be decrypted with the same AAD
+- **Encrypt response: returns CryptoKeyVersion name, not CryptoKey name** — the `Name` field in `EncryptResponse` now correctly identifies the version used
+- **Decrypt: `UsedPrimary` now computed correctly** — compares decrypted version against the key's current primary version
+- **Key purpose validation on all crypto operations** — using a MAC key for encryption, an ASYMMETRIC_DECRYPT key for signing, etc. now returns `FAILED_PRECONDITION`
+- **AsymmetricDecrypt: hash selection based on algorithm** — `RSA_DECRYPT_OAEP_*_SHA1/SHA256/SHA512` now uses the correct OAEP hash; previously hardcoded to SHA-256
+- **AsymmetricSign: supports `data` field** — callers can now pass raw data and have the emulator hash internally, in addition to pre-hashed digests
+- **MacSign/MacVerify: HMAC algorithm dispatch** — HMAC_SHA1, HMAC_SHA224, HMAC_SHA384, HMAC_SHA512 now use the correct hash function; previously hardcoded to SHA-256
+- **UpdateCryptoKey: respects `update_mask`** — only fields listed in the mask are updated; requires a non-empty mask
+- **UpdateCryptoKeyVersion: validates state transitions** — only ENABLED↔DISABLED transitions permitted; DESTROY_SCHEDULED/DESTROYED versions cannot be updated
+- **DestroyCryptoKeyVersion: sets `destroy_time` on response; idempotent for DESTROY_SCHEDULED**
+- **CreateCryptoKey: rejects UNSPECIFIED purpose** — previously silently defaulted to ENCRYPT_DECRYPT; now returns `INVALID_ARGUMENT`
+- **CreateCryptoKeyVersion: reads algorithm/protection_level from request**
+- **ImportCryptoKeyVersion: rejects UNSPECIFIED algorithm**
+- **CRC32C input verification** — all crypto operations now verify request CRC32C checksums when provided; returns `INVALID_ARGUMENT` on mismatch
+- **ListKeyRings: filters by parent prefix**
+- **ProtectionLevel and GenerateTime** populated on all CryptoKeyVersion responses
+
+### Added
+- 18 conformance integration tests covering all fixed behaviors
+- `findKeyAndVersion` storage helper for purpose-aware crypto dispatch
+- `verifyCRC32C` server helper for input integrity checking
+
 ## [0.6.0] - 2026-04-03
 
 ### Added

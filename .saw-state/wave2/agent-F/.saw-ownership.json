@@ -1,0 +1,11 @@
+{
+  "agent": "F",
+  "wave": 2,
+  "impl_doc": "/Users/dayna.blackwell/code/gcp-kms-emulator/docs/IMPL/IMPL-kms-conformance-fixes.yaml",
+  "owned_files": [
+    "internal/server/server.go",
+    "internal/server/importjob.go",
+    "conformance_test.go"
+  ],
+  "repo_root": "/Users/dayna.blackwell/code/gcp-kms-emulator"
+}

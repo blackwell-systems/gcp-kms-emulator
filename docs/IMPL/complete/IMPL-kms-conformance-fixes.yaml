@@ -1,3 +1,4 @@
+completion_date: "2026-04-03"
 title: KMS API Conformance Fixes (22 Critical + Minor Issues)
 feature_slug: kms-conformance-fixes
 verdict: SUITABLE
@@ -976,6 +977,7 @@ waves:
             - C
             - D
             - E
+          context_source: prepared-brief
 quality_gates:
     level: standard
     gates:
@@ -1070,6 +1072,37 @@ completion_reports:
             - internal/storage/raw.go
         verification: PASS
         notes: 'CRC32C verification added to MacSign, MacVerify, RawEncrypt, RawDecrypt. Purpose validation (RAW_ENCRYPT_DECRYPT) added to storage/raw.go via findKeyAndVersion pattern. Build fails only on missing cross-agent symbols (findKeyAndVersion from Agent B, verifyCRC32C from Agent D) as expected for parallel wave. Out-of-scope deps: verifyCRC32C (Agent D: internal/server/crc32c.go), findKeyAndVersion (Agent B: internal/storage/asymmetric.go).'
+    F:
+        status: complete
+        branch: main
+        commit: 05df82c
+        files_changed:
+            - internal/server/server.go
+            - internal/server/importjob.go
+            - conformance_test.go
+        files_created:
+            - conformance_test.go
+        tests_added:
+            - TestConformance_Encrypt_AAD
+            - TestConformance_Encrypt_CRC32C_Mismatch
+            - TestConformance_Encrypt_ResponseName_IsVersion
+            - TestConformance_Encrypt_WrongPurpose
+            - TestConformance_Decrypt_WrongPurpose
+            - TestConformance_Decrypt_UsedPrimary
+            - TestConformance_CreateCryptoKey_UnspecifiedPurpose
+            - TestConformance_UpdateCryptoKey_MaskRespected
+            - TestConformance_UpdateCryptoKeyVersion_InvalidTransition
+            - TestConformance_DestroyCryptoKeyVersion_Idempotent
+            - TestConformance_DestroyCryptoKeyVersion_DestroyTime
+            - TestConformance_MacSign_WrongPurpose
+            - TestConformance_MacSign_CRC32C_Mismatch
+            - TestConformance_RawEncrypt_WrongPurpose
+            - TestConformance_ImportCryptoKeyVersion_UnspecifiedAlgorithm
+            - TestConformance_AsymmetricSign_DataField
+            - TestConformance_AsymmetricSign_WrongPurpose
+            - TestConformance_AsymmetricDecrypt_SHA1OAEP
+        verification: PASS
+        notes: 'All 18 conformance tests pass. server.go: CRC32C verification on Encrypt/Decrypt inputs, accurate UsedPrimary via version name comparison, UNSPECIFIED purpose rejection, update_mask required gate, removed UNSPECIFIED state guard from UpdateCryptoKeyVersion. importjob.go: UNSPECIFIED algorithm rejection before storage call. go test ./... passes clean.'
 pre_mortem:
     overall_risk: medium
     rows:
@@ -1154,5 +1187,5 @@ critic_report:
     summary: 'Error resolved: added storage_test.go to Agent A ownership with call-site update instructions for Encrypt/Decrypt/CreateCryptoKeyVersion signature changes. Warning noted: Agent D brief mentions wrapperspb import already present in crc32c.go — wave agents should check before adding. All other checks pass.'
     reviewed_at: "2026-04-03T17:58:38Z"
     issue_count: 0
-state: REVIEWED
+state: COMPLETE
 injection_method: hook
