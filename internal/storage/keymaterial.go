@@ -82,12 +82,48 @@ func generateKeyMaterial(algorithm kmspb.CryptoKeyVersion_CryptoKeyVersionAlgori
 		return nil, asymKey, nil, err
 
 	// HMAC algorithms
+	case kmspb.CryptoKeyVersion_HMAC_SHA1:
+		hmacKey = make([]byte, 20)
+		if _, err = rand.Read(hmacKey); err != nil {
+			return nil, nil, nil, fmt.Errorf("generate HMAC key: %w", err)
+		}
+		return nil, nil, hmacKey, nil
+
+	case kmspb.CryptoKeyVersion_HMAC_SHA224:
+		hmacKey = make([]byte, 28)
+		if _, err = rand.Read(hmacKey); err != nil {
+			return nil, nil, nil, fmt.Errorf("generate HMAC key: %w", err)
+		}
+		return nil, nil, hmacKey, nil
+
 	case kmspb.CryptoKeyVersion_HMAC_SHA256:
 		hmacKey = make([]byte, 32)
 		if _, err = rand.Read(hmacKey); err != nil {
 			return nil, nil, nil, fmt.Errorf("generate HMAC key: %w", err)
 		}
 		return nil, nil, hmacKey, nil
+
+	case kmspb.CryptoKeyVersion_HMAC_SHA384:
+		hmacKey = make([]byte, 48)
+		if _, err = rand.Read(hmacKey); err != nil {
+			return nil, nil, nil, fmt.Errorf("generate HMAC key: %w", err)
+		}
+		return nil, nil, hmacKey, nil
+
+	case kmspb.CryptoKeyVersion_HMAC_SHA512:
+		hmacKey = make([]byte, 64)
+		if _, err = rand.Read(hmacKey); err != nil {
+			return nil, nil, nil, fmt.Errorf("generate HMAC key: %w", err)
+		}
+		return nil, nil, hmacKey, nil
+
+	// Raw encryption (AES-128-GCM)
+	case kmspb.CryptoKeyVersion_AES_128_GCM:
+		symmetricKey = make([]byte, 16)
+		if _, err = rand.Read(symmetricKey); err != nil {
+			return nil, nil, nil, fmt.Errorf("generate AES key: %w", err)
+		}
+		return symmetricKey, nil, nil, nil
 
 	// Raw encryption (AES-256-GCM)
 	case kmspb.CryptoKeyVersion_AES_256_GCM:
