@@ -234,7 +234,7 @@ func TestImportCryptoKeyVersion_UnspecifiedAlgorithm(t *testing.T) {
 
 	importJobID := "import-job-1"
 	_, err = s.CreateImportJob(keyringName, importJobID,
-		int32(kmspb.ImportJob_RSA_OAEP_2048_SHA256_AES_256_CBC),
+		int32(kmspb.ImportJob_RSA_OAEP_3072_SHA256_AES_256),
 		int32(kmspb.ProtectionLevel_SOFTWARE))
 	if err != nil {
 		t.Fatalf("CreateImportJob failed: %v", err)

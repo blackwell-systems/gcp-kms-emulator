@@ -245,12 +245,12 @@ func (s *Server) Encrypt(ctx context.Context, req *kmspb.EncryptRequest) (*kmspb
 		return nil, err
 	}
 
-	ciphertext, err := s.storage.Encrypt(req.Name, req.Plaintext)
+	ciphertext, versionName, err := s.storage.Encrypt(req.Name, req.Plaintext, req.AdditionalAuthenticatedData)
 	if err != nil {
 		return nil, storageErr(err)
 	}
 	return &kmspb.EncryptResponse{
-		Name:                    req.Name,
+		Name:                    versionName,
 		Ciphertext:              ciphertext,
 		CiphertextCrc32C:        crc32cValue(ciphertext),
 		VerifiedPlaintextCrc32C: req.PlaintextCrc32C != nil,
@@ -271,7 +271,7 @@ func (s *Server) Decrypt(ctx context.Context, req *kmspb.DecryptRequest) (*kmspb
 		return nil, err
 	}
 
-	plaintext, err := s.storage.Decrypt(req.Name, req.Ciphertext)
+	plaintext, _, err := s.storage.Decrypt(req.Name, req.Ciphertext, req.AdditionalAuthenticatedData)
 	if err != nil {
 		return nil, storageErr(err)
 	}
@@ -344,7 +344,7 @@ func (s *Server) CreateCryptoKeyVersion(ctx context.Context, req *kmspb.CreateCr
 		return nil, err
 	}
 
-	version, err := s.storage.CreateCryptoKeyVersion(req.Parent)
+	version, err := s.storage.CreateCryptoKeyVersion(req.Parent, req.CryptoKeyVersion)
 	if err != nil {
 		return nil, storageErr(err)
 	}
@@ -359,7 +359,7 @@ func (s *Server) UpdateCryptoKey(ctx context.Context, req *kmspb.UpdateCryptoKey
 		return nil, err
 	}
 
-	cryptoKey, err := s.storage.UpdateCryptoKey(req.CryptoKey.Name, req.CryptoKey.Labels)
+	cryptoKey, err := s.storage.UpdateCryptoKey(req.CryptoKey.Name, req.CryptoKey, req.UpdateMask)
 	if err != nil {
 		return nil, storageErr(err)
 	}
@@ -377,7 +377,7 @@ func (s *Server) UpdateCryptoKeyVersion(ctx context.Context, req *kmspb.UpdateCr
 		return nil, err
 	}
 
-	version, err := s.storage.UpdateCryptoKeyVersion(req.CryptoKeyVersion.Name, req.CryptoKeyVersion.State)
+	version, err := s.storage.UpdateCryptoKeyVersion(req.CryptoKeyVersion.Name, req.CryptoKeyVersion.State, req.UpdateMask)
 	if err != nil {
 		return nil, storageErr(err)
 	}

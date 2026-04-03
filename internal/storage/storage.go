@@ -670,7 +670,7 @@ func (s *Storage) UpdateCryptoKey(keyName string, key *kmspb.CryptoKey, mask *fi
 				cryptoKey.VersionTemplate = key.VersionTemplate
 			case "destroy_scheduled_duration":
 				cryptoKey.DestroyScheduledDuration = key.DestroyScheduledDuration
-			// Unrecognised paths are silently ignored
+				// Unrecognised paths are silently ignored
 			}
 		}
 	}
@@ -680,20 +680,6 @@ func (s *Storage) UpdateCryptoKey(keyName string, key *kmspb.CryptoKey, mask *fi
 }
 
 // findKeyAndVersion returns both the parent StoredCryptoKey and the
-// StoredCryptoKeyVersion for a version resource name.
-// Caller must hold at least s.mu.RLock.
-// Returns (nil, nil) if not found.
-func (s *Storage) findKeyAndVersion(versionName string) (*StoredCryptoKey, *StoredCryptoKeyVersion) {
-	for _, keyring := range s.keyrings {
-		for _, cryptoKey := range keyring.CryptoKeys {
-			if version, exists := cryptoKey.Versions[versionName]; exists {
-				return cryptoKey, version
-			}
-		}
-	}
-	return nil, nil
-}
-
 // storedKeyToProto converts a StoredCryptoKey to its proto representation.
 // primary is the primary StoredCryptoKeyVersion to embed.
 func storedKeyToProto(ck *StoredCryptoKey, primary *StoredCryptoKeyVersion) *kmspb.CryptoKey {

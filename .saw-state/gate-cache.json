@@ -1,5 +1,29 @@
 {
   "entries": {
+    "0190b15c355da043694cd2140e5d4ff5": {
+      "test": {
+        "gate_type": "test",
+        "command": "go test ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "ok  \tgithub.com/blackwell-systems/gcp-kms-emulator\t0.520s\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server-dual\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server-rest\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/authz\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/gateway\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/gen/google/cloud/kms/v1\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/server\t[no test files]\nok  \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/storage\t0.379s\n",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T11:01:53.314739-07:00"
+      }
+    },
+    "0d965c9b960337da22442c0769c0f4d2": {
+      "build": {
+        "gate_type": "build",
+        "command": "go build ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T11:08:19.973164-07:00"
+      }
+    },
     "19f2414a04e35c5c487c2645e8baed4d": {
       "test": {
         "gate_type": "test",
@@ -24,6 +48,18 @@
         "cached_at": "2026-04-03T10:09:18.536785-07:00"
       }
     },
+    "3c5e932040b199c9766b33f97e36990f": {
+      "lint": {
+        "gate_type": "lint",
+        "command": "go vet ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T11:08:20.366512-07:00"
+      }
+    },
     "6955213a56f020fab12ef861e11a6b4a": {
       "lint": {
         "gate_type": "lint",
@@ -46,6 +82,42 @@
         "stderr": "",
         "from_cache": true,
         "cached_at": "2026-04-03T10:09:19.497801-07:00"
+      }
+    },
+    "a8a0ab3e291626a64d3f584ed8217742": {
+      "lint": {
+        "gate_type": "lint",
+        "command": "go vet ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T11:01:52.168154-07:00"
+      }
+    },
+    "d6a60d51955cd8ef937690220db1957f": {
+      "build": {
+        "gate_type": "build",
+        "command": "go build ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T11:01:51.796296-07:00"
+      }
+    },
+    "e1b895695ef3d9c50bcb8b3cf6f5073a": {
+      "test": {
+        "gate_type": "test",
+        "command": "go test ./...",
+        "passed": true,
+        "exit_code": 0,
+        "stdout": "ok  \tgithub.com/blackwell-systems/gcp-kms-emulator\t(cached)\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server-dual\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/cmd/server-rest\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/authz\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/gateway\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/gen/google/cloud/kms/v1\t[no test files]\n?   \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/server\t[no test files]\nok  \tgithub.com/blackwell-systems/gcp-kms-emulator/internal/storage\t(cached)\n",
+        "stderr": "",
+        "from_cache": true,
+        "cached_at": "2026-04-03T11:08:20.760101-07:00"
       }
     },
     "eb1bfd60c25f5a86e08c0718e5d54548": {
