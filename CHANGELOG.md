@@ -7,22 +7,35 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.5.0] - 2026-04-03
+
 ### Changed
+- **REST gateway migrated from hand-rolled HTTP to grpc-gateway v2** — HTTP handlers are now auto-generated from the KMS proto definitions, ensuring full API compatibility with real GCP
 - **Refactor**: Replaced `strings.Contains` error matching with typed storage errors (`ErrNotFound`, `ErrAlreadyExists`, `ErrFailedPrecondition`)
 - **Refactor**: Added `requireField()` and `storageErr()` helpers, reducing boilerplate in all 17 RPC methods
-- Added `authz` package documentation
 - Fixed root package declaration (`package main` → `package gcp_kms_emulator`) for library importability
 
 ### Added
 - `Register()` composition hook for unified `gcp-emulator`
+- `NewGatewayHandler()` for mounting KMS REST gateway in unified HTTP server
+- `gateway.Handler()` method for embedding in parent HTTP multiplexer
 - Env vars and IAM mode in `--help` output for all 3 server binaries
 - IAM mode shown in startup banner
 - gRPC request logging at debug level
-- `/healthz` and `/readyz` health endpoints
+- `/healthz`, `/readyz`, `/health` endpoints on REST gateway
+- `jsonErrorHandler` returns clean 400 for malformed JSON bodies
+- `buf.gen.yaml` for reproducible grpc-gateway stub generation
+- `authz` package documentation
 
 ### Fixed
+- REST gateway now returns correct HTTP status codes: NotFound→404, AlreadyExists→409, InvalidArgument→400, FailedPrecondition→400 (previously all mapped to 500)
+- REST gateway now returns structured GCP-format error responses (`{"code":N,"message":"..."}`)
+- Malformed JSON request bodies now return 400 instead of being silently accepted
+- `IAM_HOST` → `IAM_EMULATOR_HOST` in README (matches actual env var)
 - `Register()` no longer calls `reflection.Register`, preventing fatal duplicate registration when composing multiple emulators
-- `IAM_HOST` → `IAM_EMULATOR_HOST` in README (matches actual env var read by gcp-emulator-auth)
+
+### Removed
+- Hand-rolled HTTP gateway (560 lines, replaced by ~80 lines of grpc-gateway wiring)
 - `NewGatewayHandler()` for mounting KMS REST gateway in unified HTTP server
 - `gateway.Handler()` method for embedding in parent HTTP multiplexer
 
