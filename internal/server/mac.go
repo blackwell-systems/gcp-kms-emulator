@@ -27,8 +27,11 @@ func (s *Server) MacSign(ctx context.Context, req *kmspb.MacSignRequest) (*kmspb
 		return nil, storageErr(err)
 	}
 	return &kmspb.MacSignResponse{
-		Name: req.Name,
-		Mac:  mac,
+		Name:               req.Name,
+		Mac:                mac,
+		MacCrc32C:          crc32cValue(mac),
+		VerifiedDataCrc32C: req.DataCrc32C != nil,
+		ProtectionLevel:    kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
 
@@ -52,7 +55,11 @@ func (s *Server) MacVerify(ctx context.Context, req *kmspb.MacVerifyRequest) (*k
 		return nil, storageErr(err)
 	}
 	return &kmspb.MacVerifyResponse{
-		Name:    req.Name,
-		Success: success,
+		Name:                     req.Name,
+		Success:                  success,
+		VerifiedDataCrc32C:       req.DataCrc32C != nil,
+		VerifiedMacCrc32C:        req.MacCrc32C != nil,
+		VerifiedSuccessIntegrity: true,
+		ProtectionLevel:          kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }

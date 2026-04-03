@@ -250,8 +250,12 @@ func (s *Server) Encrypt(ctx context.Context, req *kmspb.EncryptRequest) (*kmspb
 		return nil, storageErr(err)
 	}
 	return &kmspb.EncryptResponse{
-		Name:       req.Name,
-		Ciphertext: ciphertext,
+		Name:                    req.Name,
+		Ciphertext:              ciphertext,
+		CiphertextCrc32C:        crc32cValue(ciphertext),
+		VerifiedPlaintextCrc32C: req.PlaintextCrc32C != nil,
+		VerifiedAdditionalAuthenticatedDataCrc32C: req.AdditionalAuthenticatedDataCrc32C != nil,
+		ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
 
@@ -272,7 +276,10 @@ func (s *Server) Decrypt(ctx context.Context, req *kmspb.DecryptRequest) (*kmspb
 		return nil, storageErr(err)
 	}
 	return &kmspb.DecryptResponse{
-		Plaintext: plaintext,
+		Plaintext:       plaintext,
+		PlaintextCrc32C: crc32cValue(plaintext),
+		UsedPrimary:     true,
+		ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
 

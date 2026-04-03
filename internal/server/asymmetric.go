@@ -47,7 +47,11 @@ func (s *Server) AsymmetricSign(ctx context.Context, req *kmspb.AsymmetricSignRe
 	}
 
 	return &kmspb.AsymmetricSignResponse{
-		Signature: sig,
+		Name:                 req.Name,
+		Signature:            sig,
+		SignatureCrc32C:      crc32cValue(sig),
+		VerifiedDigestCrc32C: req.DigestCrc32C != nil,
+		ProtectionLevel:      kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
 
@@ -69,7 +73,10 @@ func (s *Server) AsymmetricDecrypt(ctx context.Context, req *kmspb.AsymmetricDec
 	}
 
 	return &kmspb.AsymmetricDecryptResponse{
-		Plaintext: pt,
+		Plaintext:                pt,
+		PlaintextCrc32C:          crc32cValue(pt),
+		VerifiedCiphertextCrc32C: req.CiphertextCrc32C != nil,
+		ProtectionLevel:          kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
 
@@ -88,7 +95,10 @@ func (s *Server) GetPublicKey(ctx context.Context, req *kmspb.GetPublicKeyReques
 	}
 
 	return &kmspb.PublicKey{
-		Pem:       pemStr,
-		Algorithm: kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm(alg),
+		Name:            req.Name,
+		Pem:             pemStr,
+		Algorithm:       kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm(alg),
+		PemCrc32C:       crc32cValue([]byte(pemStr)),
+		ProtectionLevel: kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }

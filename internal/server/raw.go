@@ -30,9 +30,16 @@ func (s *Server) RawEncrypt(ctx context.Context, req *kmspb.RawEncryptRequest) (
 	}
 
 	return &kmspb.RawEncryptResponse{
-		Ciphertext:           ct,
-		InitializationVector: iv,
-		TagLength:            tagLen,
+		Name:                       req.Name,
+		Ciphertext:                 ct,
+		InitializationVector:       iv,
+		TagLength:                  tagLen,
+		CiphertextCrc32C:           crc32cValue(ct),
+		InitializationVectorCrc32C: crc32cValue(iv),
+		VerifiedPlaintextCrc32C:    req.PlaintextCrc32C != nil,
+		VerifiedAdditionalAuthenticatedDataCrc32C: req.AdditionalAuthenticatedDataCrc32C != nil,
+		VerifiedInitializationVectorCrc32C:        req.InitializationVectorCrc32C != nil,
+		ProtectionLevel:                           kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
 
@@ -58,7 +65,12 @@ func (s *Server) RawDecrypt(ctx context.Context, req *kmspb.RawDecryptRequest) (
 	}
 
 	return &kmspb.RawDecryptResponse{
-		Plaintext: pt,
+		Plaintext:                pt,
+		PlaintextCrc32C:          crc32cValue(pt),
+		VerifiedCiphertextCrc32C: req.CiphertextCrc32C != nil,
+		VerifiedAdditionalAuthenticatedDataCrc32C: req.AdditionalAuthenticatedDataCrc32C != nil,
+		VerifiedInitializationVectorCrc32C:        req.InitializationVectorCrc32C != nil,
+		ProtectionLevel:                           kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }
 
@@ -77,6 +89,7 @@ func (s *Server) GenerateRandomBytes(ctx context.Context, req *kmspb.GenerateRan
 	}
 
 	return &kmspb.GenerateRandomBytesResponse{
-		Data: data,
+		Data:       data,
+		DataCrc32C: crc32cValue(data),
 	}, nil
 }
