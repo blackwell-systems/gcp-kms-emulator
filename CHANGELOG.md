@@ -15,6 +15,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - `Register()` composition hook for unified `gcp-emulator`
+- Env vars and IAM mode in `--help` output for all 3 server binaries
+- IAM mode shown in startup banner
+- gRPC request logging at debug level
+- `/healthz` and `/readyz` health endpoints
+
+### Fixed
+- `Register()` no longer calls `reflection.Register`, preventing fatal duplicate registration when composing multiple emulators
+- `IAM_HOST` → `IAM_EMULATOR_HOST` in README (matches actual env var read by gcp-emulator-auth)
 - `NewGatewayHandler()` for mounting KMS REST gateway in unified HTTP server
 - `gateway.Handler()` method for embedding in parent HTTP multiplexer
 
