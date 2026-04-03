@@ -74,11 +74,13 @@ type StoredCryptoKey struct {
 
 // StoredCryptoKeyVersion represents a single version of a crypto key
 type StoredCryptoKeyVersion struct {
-	Name         string
-	State        kmspb.CryptoKeyVersion_CryptoKeyVersionState
-	CreateTime   time.Time
-	Algorithm    kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm
-	SymmetricKey []byte // AES key for symmetric encryption
+	Name          string
+	State         kmspb.CryptoKeyVersion_CryptoKeyVersionState
+	CreateTime    time.Time
+	Algorithm     kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm
+	SymmetricKey  []byte                // AES key for symmetric encryption
+	AsymmetricKey *AsymmetricKeyMaterial // RSA/EC key material for asymmetric operations
+	HMACKey       []byte                // HMAC key for MAC operations
 }
 
 // NewStorage creates a new storage instance
@@ -168,18 +170,20 @@ func (s *Storage) CreateCryptoKey(keyringName, keyID string, purpose kmspb.Crypt
 		algorithm = versionTemplate.Algorithm
 	}
 
-	// Generate symmetric key for encryption
-	symmetricKey := make([]byte, 32) // AES-256
-	if _, err := io.ReadFull(rand.Reader, symmetricKey); err != nil {
-		return nil, fmt.Errorf("failed to generate key: %w", err)
+	// Generate key material based on algorithm
+	symmetricKey, asymKey, hmacKey, err := generateKeyMaterial(algorithm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate key material: %w", err)
 	}
 
 	version := &StoredCryptoKeyVersion{
-		Name:         versionName,
-		State:        kmspb.CryptoKeyVersion_ENABLED,
-		CreateTime:   now,
-		Algorithm:    algorithm,
-		SymmetricKey: symmetricKey,
+		Name:          versionName,
+		State:         kmspb.CryptoKeyVersion_ENABLED,
+		CreateTime:    now,
+		Algorithm:     algorithm,
+		SymmetricKey:  symmetricKey,
+		AsymmetricKey: asymKey,
+		HMACKey:       hmacKey,
 	}
 
 	cryptoKey := &StoredCryptoKey{
@@ -391,17 +395,19 @@ func (s *Storage) CreateCryptoKeyVersion(keyName string) (*kmspb.CryptoKeyVersio
 		algorithm = cryptoKey.VersionTemplate.Algorithm
 	}
 
-	symmetricKey := make([]byte, 32)
-	if _, err := io.ReadFull(rand.Reader, symmetricKey); err != nil {
-		return nil, fmt.Errorf("failed to generate key: %w", err)
+	symmetricKey, asymKey, hmacKey, err := generateKeyMaterial(algorithm)
+	if err != nil {
+		return nil, fmt.Errorf("failed to generate key material: %w", err)
 	}
 
 	version := &StoredCryptoKeyVersion{
-		Name:         versionName,
-		State:        kmspb.CryptoKeyVersion_ENABLED,
-		CreateTime:   now,
-		Algorithm:    algorithm,
-		SymmetricKey: symmetricKey,
+		Name:          versionName,
+		State:         kmspb.CryptoKeyVersion_ENABLED,
+		CreateTime:    now,
+		Algorithm:     algorithm,
+		SymmetricKey:  symmetricKey,
+		AsymmetricKey: asymKey,
+		HMACKey:       hmacKey,
 	}
 
 	cryptoKey.Versions[versionName] = version
