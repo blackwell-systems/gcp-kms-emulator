@@ -94,7 +94,7 @@ func (s *Storage) CreateKeyRing(name string) (*kmspb.KeyRing, error) {
 	defer s.mu.Unlock()
 
 	if _, exists := s.keyrings[name]; exists {
-		return nil, fmt.Errorf("keyring already exists: %s", name)
+		return nil, &ErrAlreadyExists{Resource: name}
 	}
 
 	now := time.Now()
@@ -119,7 +119,7 @@ func (s *Storage) GetKeyRing(name string) (*kmspb.KeyRing, error) {
 
 	keyring, exists := s.keyrings[name]
 	if !exists {
-		return nil, fmt.Errorf("keyring not found: %s", name)
+		return nil, &ErrNotFound{Resource: name}
 	}
 
 	return &kmspb.KeyRing{
@@ -151,12 +151,12 @@ func (s *Storage) CreateCryptoKey(keyringName, keyID string, purpose kmspb.Crypt
 
 	keyring, exists := s.keyrings[keyringName]
 	if !exists {
-		return nil, fmt.Errorf("keyring not found: %s", keyringName)
+		return nil, &ErrNotFound{Resource: keyringName}
 	}
 
 	keyName := fmt.Sprintf("%s/cryptoKeys/%s", keyringName, keyID)
 	if _, exists := keyring.CryptoKeys[keyName]; exists {
-		return nil, fmt.Errorf("crypto key already exists: %s", keyName)
+		return nil, &ErrAlreadyExists{Resource: keyName}
 	}
 
 	now := time.Now()
@@ -234,7 +234,7 @@ func (s *Storage) GetCryptoKey(name string) (*kmspb.CryptoKey, error) {
 		}
 	}
 
-	return nil, fmt.Errorf("crypto key not found: %s", name)
+	return nil, &ErrNotFound{Resource: name}
 }
 
 // Encrypt encrypts plaintext using a crypto key
@@ -251,7 +251,7 @@ func (s *Storage) Encrypt(keyName string, plaintext []byte) ([]byte, error) {
 	}
 
 	if cryptoKey == nil {
-		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+		return nil, &ErrNotFound{Resource: keyName}
 	}
 
 	primaryVersion := cryptoKey.Versions[cryptoKey.PrimaryVersion]
@@ -297,7 +297,7 @@ func (s *Storage) Decrypt(keyName string, ciphertext []byte) ([]byte, error) {
 	}
 
 	if cryptoKey == nil {
-		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+		return nil, &ErrNotFound{Resource: keyName}
 	}
 
 	// Try all versions (in case it was encrypted with a non-primary version)
@@ -341,7 +341,7 @@ func (s *Storage) ListCryptoKeys(keyringName string) ([]*kmspb.CryptoKey, error)
 
 	keyring, exists := s.keyrings[keyringName]
 	if !exists {
-		return nil, fmt.Errorf("keyring not found: %s", keyringName)
+		return nil, &ErrNotFound{Resource: keyringName}
 	}
 
 	var cryptoKeys []*kmspb.CryptoKey
@@ -379,7 +379,7 @@ func (s *Storage) CreateCryptoKeyVersion(keyName string) (*kmspb.CryptoKeyVersio
 	}
 
 	if cryptoKey == nil {
-		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+		return nil, &ErrNotFound{Resource: keyName}
 	}
 
 	now := time.Now()
@@ -429,16 +429,16 @@ func (s *Storage) UpdateCryptoKeyPrimaryVersion(keyName, versionName string) (*k
 	}
 
 	if cryptoKey == nil {
-		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+		return nil, &ErrNotFound{Resource: keyName}
 	}
 
 	version, exists := cryptoKey.Versions[versionName]
 	if !exists {
-		return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+		return nil, &ErrNotFound{Resource: versionName}
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, fmt.Errorf("crypto key version is not enabled: %s", versionName)
+		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
 	}
 
 	cryptoKey.PrimaryVersion = versionName
@@ -477,7 +477,7 @@ func (s *Storage) GetCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersi
 		}
 	}
 
-	return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+	return nil, &ErrNotFound{Resource: versionName}
 }
 
 // ListCryptoKeyVersions lists all versions of a crypto key
@@ -494,7 +494,7 @@ func (s *Storage) ListCryptoKeyVersions(keyName string) ([]*kmspb.CryptoKeyVersi
 	}
 
 	if cryptoKey == nil {
-		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+		return nil, &ErrNotFound{Resource: keyName}
 	}
 
 	var versions []*kmspb.CryptoKeyVersion
@@ -529,7 +529,7 @@ func (s *Storage) UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoK
 		}
 	}
 
-	return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+	return nil, &ErrNotFound{Resource: versionName}
 }
 
 // DestroyCryptoKeyVersion schedules a crypto key version for destruction
@@ -541,7 +541,7 @@ func (s *Storage) DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 		for _, cryptoKey := range keyring.CryptoKeys {
 			if version, exists := cryptoKey.Versions[versionName]; exists {
 				if version.State == kmspb.CryptoKeyVersion_DESTROYED || version.State == kmspb.CryptoKeyVersion_DESTROY_SCHEDULED {
-					return nil, fmt.Errorf("crypto key version already destroyed or scheduled: %s", versionName)
+					return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version already destroyed or scheduled: %s", versionName)}
 				}
 
 				version.State = kmspb.CryptoKeyVersion_DESTROY_SCHEDULED
@@ -555,7 +555,7 @@ func (s *Storage) DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 		}
 	}
 
-	return nil, fmt.Errorf("crypto key version not found: %s", versionName)
+	return nil, &ErrNotFound{Resource: versionName}
 }
 
 // UpdateCryptoKey updates metadata of a crypto key
@@ -572,7 +572,7 @@ func (s *Storage) UpdateCryptoKey(keyName string, labels map[string]string) (*km
 	}
 
 	if cryptoKey == nil {
-		return nil, fmt.Errorf("crypto key not found: %s", keyName)
+		return nil, &ErrNotFound{Resource: keyName}
 	}
 
 	if labels != nil {

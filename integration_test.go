@@ -1,4 +1,4 @@
-package main
+package gcp_kms_emulator_test
 
 import (
 	"context"

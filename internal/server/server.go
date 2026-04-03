@@ -34,8 +34,8 @@ package server
 
 import (
 	"context"
+	"errors"
 	"fmt"
-	"strings"
 
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
 	"google.golang.org/grpc/codes"
@@ -45,6 +45,31 @@ import (
 	"github.com/blackwell-systems/gcp-kms-emulator/internal/authz"
 	"github.com/blackwell-systems/gcp-kms-emulator/internal/storage"
 )
+
+// requireField returns an InvalidArgument error if value is empty.
+func requireField(value, name string) error {
+	if value == "" {
+		return status.Errorf(codes.InvalidArgument, "%s is required", name)
+	}
+	return nil
+}
+
+// storageErr maps typed storage errors to gRPC status codes.
+func storageErr(err error) error {
+	var notFound *storage.ErrNotFound
+	var alreadyExists *storage.ErrAlreadyExists
+	var precondition *storage.ErrFailedPrecondition
+	switch {
+	case errors.As(err, &notFound):
+		return status.Error(codes.NotFound, err.Error())
+	case errors.As(err, &alreadyExists):
+		return status.Error(codes.AlreadyExists, err.Error())
+	case errors.As(err, &precondition):
+		return status.Error(codes.FailedPrecondition, err.Error())
+	default:
+		return status.Error(codes.Internal, err.Error())
+	}
+}
 
 // Server implements the KMS KeyManagementService
 type Server struct {
@@ -108,14 +133,12 @@ func (s *Server) checkPermission(ctx context.Context, operation string, resource
 
 // CreateKeyRing creates a new keyring
 func (s *Server) CreateKeyRing(ctx context.Context, req *kmspb.CreateKeyRingRequest) (*kmspb.KeyRing, error) {
-	if req.Parent == "" {
-		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	if err := requireField(req.Parent, "parent"); err != nil {
+		return nil, err
 	}
-	if req.KeyRingId == "" {
-		return nil, status.Error(codes.InvalidArgument, "key_ring_id is required")
+	if err := requireField(req.KeyRingId, "key_ring_id"); err != nil {
+		return nil, err
 	}
-
-	// Check permission (against parent for create operations)
 	if err := s.checkPermission(ctx, "CreateKeyRing", authz.NormalizeParentForCreate(req.Parent)); err != nil {
 		return nil, err
 	}
@@ -123,48 +146,40 @@ func (s *Server) CreateKeyRing(ctx context.Context, req *kmspb.CreateKeyRingRequ
 	name := fmt.Sprintf("%s/keyRings/%s", req.Parent, req.KeyRingId)
 	keyring, err := s.storage.CreateKeyRing(name)
 	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return nil, status.Error(codes.AlreadyExists, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return keyring, nil
 }
 
 // GetKeyRing retrieves a keyring
 func (s *Server) GetKeyRing(ctx context.Context, req *kmspb.GetKeyRingRequest) (*kmspb.KeyRing, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "GetKeyRing", authz.NormalizeKeyRingResource(req.Name)); err != nil {
 		return nil, err
 	}
 
 	keyring, err := s.storage.GetKeyRing(req.Name)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return keyring, nil
 }
 
 // ListKeyRings lists keyrings in a location
 func (s *Server) ListKeyRings(ctx context.Context, req *kmspb.ListKeyRingsRequest) (*kmspb.ListKeyRingsResponse, error) {
-	if req.Parent == "" {
-		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	if err := requireField(req.Parent, "parent"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "ListKeyRings", authz.NormalizeParentForCreate(req.Parent)); err != nil {
 		return nil, err
 	}
 
 	keyrings, err := s.storage.ListKeyRings(req.Parent)
 	if err != nil {
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return &kmspb.ListKeyRingsResponse{
 		KeyRings:      keyrings,
 		NextPageToken: "",
@@ -174,16 +189,15 @@ func (s *Server) ListKeyRings(ctx context.Context, req *kmspb.ListKeyRingsReques
 
 // CreateCryptoKey creates a new crypto key
 func (s *Server) CreateCryptoKey(ctx context.Context, req *kmspb.CreateCryptoKeyRequest) (*kmspb.CryptoKey, error) {
-	if req.Parent == "" {
-		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	if err := requireField(req.Parent, "parent"); err != nil {
+		return nil, err
 	}
-	if req.CryptoKeyId == "" {
-		return nil, status.Error(codes.InvalidArgument, "crypto_key_id is required")
+	if err := requireField(req.CryptoKeyId, "crypto_key_id"); err != nil {
+		return nil, err
 	}
 	if req.CryptoKey == nil {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key is required")
 	}
-
 	if err := s.checkPermission(ctx, "CreateCryptoKey", authz.NormalizeKeyRingResource(req.Parent)); err != nil {
 		return nil, err
 	}
@@ -194,115 +208,86 @@ func (s *Server) CreateCryptoKey(ctx context.Context, req *kmspb.CreateCryptoKey
 	}
 
 	cryptoKey, err := s.storage.CreateCryptoKey(
-		req.Parent,
-		req.CryptoKeyId,
-		purpose,
-		req.CryptoKey.VersionTemplate,
-		req.CryptoKey.Labels,
+		req.Parent, req.CryptoKeyId, purpose,
+		req.CryptoKey.VersionTemplate, req.CryptoKey.Labels,
 	)
 	if err != nil {
-		if strings.Contains(err.Error(), "already exists") {
-			return nil, status.Error(codes.AlreadyExists, err.Error())
-		}
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return cryptoKey, nil
 }
 
 // GetCryptoKey retrieves a crypto key
 func (s *Server) GetCryptoKey(ctx context.Context, req *kmspb.GetCryptoKeyRequest) (*kmspb.CryptoKey, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "GetCryptoKey", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
 		return nil, err
 	}
 
 	cryptoKey, err := s.storage.GetCryptoKey(req.Name)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return cryptoKey, nil
 }
 
 // Encrypt encrypts data using a crypto key
 func (s *Server) Encrypt(ctx context.Context, req *kmspb.EncryptRequest) (*kmspb.EncryptResponse, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
 	}
 	if len(req.Plaintext) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "plaintext is required")
 	}
-
 	if err := s.checkPermission(ctx, "Encrypt", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
 		return nil, err
 	}
 
 	ciphertext, err := s.storage.Encrypt(req.Name, req.Plaintext)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return &kmspb.EncryptResponse{
-		Name:             req.Name,
-		Ciphertext:       ciphertext,
-		CiphertextCrc32C: nil, // Not implementing CRC32C for simplicity
+		Name:       req.Name,
+		Ciphertext: ciphertext,
 	}, nil
 }
 
 // Decrypt decrypts data using a crypto key
 func (s *Server) Decrypt(ctx context.Context, req *kmspb.DecryptRequest) (*kmspb.DecryptResponse, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
 	}
 	if len(req.Ciphertext) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "ciphertext is required")
 	}
-
 	if err := s.checkPermission(ctx, "Decrypt", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
 		return nil, err
 	}
 
 	plaintext, err := s.storage.Decrypt(req.Name, req.Ciphertext)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return &kmspb.DecryptResponse{
-		Plaintext:       plaintext,
-		PlaintextCrc32C: nil, // Not implementing CRC32C for simplicity
+		Plaintext: plaintext,
 	}, nil
 }
 
 func (s *Server) ListCryptoKeys(ctx context.Context, req *kmspb.ListCryptoKeysRequest) (*kmspb.ListCryptoKeysResponse, error) {
-	if req.Parent == "" {
-		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	if err := requireField(req.Parent, "parent"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "ListCryptoKeys", authz.NormalizeKeyRingResource(req.Parent)); err != nil {
 		return nil, err
 	}
 
 	cryptoKeys, err := s.storage.ListCryptoKeys(req.Parent)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return &kmspb.ListCryptoKeysResponse{
 		CryptoKeys:    cryptoKeys,
 		NextPageToken: "",
@@ -311,22 +296,17 @@ func (s *Server) ListCryptoKeys(ctx context.Context, req *kmspb.ListCryptoKeysRe
 }
 
 func (s *Server) ListCryptoKeyVersions(ctx context.Context, req *kmspb.ListCryptoKeyVersionsRequest) (*kmspb.ListCryptoKeyVersionsResponse, error) {
-	if req.Parent == "" {
-		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	if err := requireField(req.Parent, "parent"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "ListCryptoKeyVersions", authz.NormalizeCryptoKeyResource(req.Parent)); err != nil {
 		return nil, err
 	}
 
 	versions, err := s.storage.ListCryptoKeyVersions(req.Parent)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return &kmspb.ListCryptoKeyVersionsResponse{
 		CryptoKeyVersions: versions,
 		NextPageToken:     "",
@@ -335,39 +315,32 @@ func (s *Server) ListCryptoKeyVersions(ctx context.Context, req *kmspb.ListCrypt
 }
 
 func (s *Server) GetCryptoKeyVersion(ctx context.Context, req *kmspb.GetCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "GetCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
 		return nil, err
 	}
 
 	version, err := s.storage.GetCryptoKeyVersion(req.Name)
 	if err != nil {
-		return nil, status.Error(codes.NotFound, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return version, nil
 }
 
 func (s *Server) CreateCryptoKeyVersion(ctx context.Context, req *kmspb.CreateCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	if req.Parent == "" {
-		return nil, status.Error(codes.InvalidArgument, "parent is required")
+	if err := requireField(req.Parent, "parent"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "CreateCryptoKeyVersion", authz.NormalizeCryptoKeyResource(req.Parent)); err != nil {
 		return nil, err
 	}
 
 	version, err := s.storage.CreateCryptoKeyVersion(req.Parent)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return version, nil
 }
 
@@ -375,19 +348,14 @@ func (s *Server) UpdateCryptoKey(ctx context.Context, req *kmspb.UpdateCryptoKey
 	if req.CryptoKey == nil || req.CryptoKey.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key.name is required")
 	}
-
 	if err := s.checkPermission(ctx, "UpdateCryptoKey", authz.NormalizeCryptoKeyResource(req.CryptoKey.Name)); err != nil {
 		return nil, err
 	}
 
 	cryptoKey, err := s.storage.UpdateCryptoKey(req.CryptoKey.Name, req.CryptoKey.Labels)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return cryptoKey, nil
 }
 
@@ -395,34 +363,27 @@ func (s *Server) UpdateCryptoKeyVersion(ctx context.Context, req *kmspb.UpdateCr
 	if req.CryptoKeyVersion == nil || req.CryptoKeyVersion.Name == "" {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key_version.name is required")
 	}
-
 	if req.CryptoKeyVersion.State == kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_STATE_UNSPECIFIED {
 		return nil, status.Error(codes.InvalidArgument, "crypto_key_version.state is required")
 	}
-
 	if err := s.checkPermission(ctx, "UpdateCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.CryptoKeyVersion.Name)); err != nil {
 		return nil, err
 	}
 
 	version, err := s.storage.UpdateCryptoKeyVersion(req.CryptoKeyVersion.Name, req.CryptoKeyVersion.State)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return version, nil
 }
 
 func (s *Server) UpdateCryptoKeyPrimaryVersion(ctx context.Context, req *kmspb.UpdateCryptoKeyPrimaryVersionRequest) (*kmspb.CryptoKey, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
 	}
-	if req.CryptoKeyVersionId == "" {
-		return nil, status.Error(codes.InvalidArgument, "crypto_key_version_id is required")
+	if err := requireField(req.CryptoKeyVersionId, "crypto_key_version_id"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "UpdateCryptoKeyPrimaryVersion", authz.NormalizeCryptoKeyResource(req.Name)); err != nil {
 		return nil, err
 	}
@@ -430,38 +391,23 @@ func (s *Server) UpdateCryptoKeyPrimaryVersion(ctx context.Context, req *kmspb.U
 	versionName := fmt.Sprintf("%s/cryptoKeyVersions/%s", req.Name, req.CryptoKeyVersionId)
 	cryptoKey, err := s.storage.UpdateCryptoKeyPrimaryVersion(req.Name, versionName)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		if strings.Contains(err.Error(), "not enabled") {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return cryptoKey, nil
 }
 
 func (s *Server) DestroyCryptoKeyVersion(ctx context.Context, req *kmspb.DestroyCryptoKeyVersionRequest) (*kmspb.CryptoKeyVersion, error) {
-	if req.Name == "" {
-		return nil, status.Error(codes.InvalidArgument, "name is required")
+	if err := requireField(req.Name, "name"); err != nil {
+		return nil, err
 	}
-
 	if err := s.checkPermission(ctx, "DestroyCryptoKeyVersion", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
 		return nil, err
 	}
 
 	version, err := s.storage.DestroyCryptoKeyVersion(req.Name)
 	if err != nil {
-		if strings.Contains(err.Error(), "not found") {
-			return nil, status.Error(codes.NotFound, err.Error())
-		}
-		if strings.Contains(err.Error(), "already destroyed") {
-			return nil, status.Error(codes.FailedPrecondition, err.Error())
-		}
-		return nil, status.Error(codes.Internal, err.Error())
+		return nil, storageErr(err)
 	}
-
 	return version, nil
 }
 

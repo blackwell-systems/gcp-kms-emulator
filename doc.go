@@ -88,4 +88,4 @@
 // Repository: https://github.com/blackwell-systems/gcp-kms-emulator
 // Documentation: https://pkg.go.dev/github.com/blackwell-systems/gcp-kms-emulator
 // Issues: https://github.com/blackwell-systems/gcp-kms-emulator/issues
-package main
+package gcp_kms_emulator

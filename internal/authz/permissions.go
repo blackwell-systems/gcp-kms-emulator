@@ -1,3 +1,9 @@
+// Package authz maps KMS RPC methods to their GCP IAM permission strings
+// and normalizes resource paths for permission checks.
+//
+// All KMS IAM permissions are registered in OperationPermissions.
+// Resource normalization functions strip resource paths to the correct
+// hierarchy level for IAM checks (keyRing, cryptoKey, or cryptoKeyVersion).
 package authz
 
 // ResourceTarget defines where the permission check should be performed
