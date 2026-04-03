@@ -32,7 +32,7 @@ type StoredImportJob struct {
 	ProtectionLevel kmspb.ProtectionLevel
 	CreateTime      time.Time
 	ExpireTime      time.Time
-	PublicKeyPEM    string     // wrapping key PEM
+	PublicKeyPEM    string          // wrapping key PEM
 	PrivateKey      *rsa.PrivateKey // wrapping key (emulator keeps it to unwrap imports)
 }
 

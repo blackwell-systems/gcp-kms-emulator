@@ -275,6 +275,7 @@ waves:
             - internal/storage/asymmetric.go
             - internal/server/asymmetric.go
             - asymmetric_test.go
+          context_source: prepared-brief
         - id: B
           task: |
             ## Agent B -- MAC Operations
@@ -322,6 +323,7 @@ waves:
             - internal/storage/mac.go
             - internal/server/mac.go
             - mac_test.go
+          context_source: prepared-brief
         - id: C
           task: |
             ## Agent C -- Raw Encrypt/Decrypt + GenerateRandomBytes
@@ -381,6 +383,7 @@ waves:
             - internal/storage/random.go
             - internal/server/raw.go
             - raw_test.go
+          context_source: prepared-brief
         - id: D
           task: |
             ## Agent D -- Import Job Operations
@@ -442,6 +445,8 @@ waves:
             - internal/storage/importjob.go
             - internal/server/importjob.go
             - importjob_test.go
+          context_source: prepared-brief
+      base_commit: bd90397d6df5c906590be8034117ed1219f71ad1
     - number: 2
       agents:
         - id: E
@@ -525,10 +530,87 @@ quality_gates:
           command: go test -v ./...
           required: true
 scaffolds:
-    - file: internal/storage/keymaterial.go
+    - file_path: ""
       contents: AsymmetricKeyMaterial struct, StoredImportJob struct, generateKeyMaterial()
       import_path: github.com/blackwell-systems/gcp-kms-emulator/internal/storage
       status: committed
+completion_reports:
+    A:
+        status: complete
+        branch: saw/kms-full-rpc-coverage/wave1-agent-A
+        commit: 0ba2936
+        files_changed:
+            - internal/storage/asymmetric.go
+            - internal/server/asymmetric.go
+            - asymmetric_test.go
+            - internal/storage/storage.go
+        files_created:
+            - internal/storage/asymmetric.go
+            - internal/server/asymmetric.go
+            - asymmetric_test.go
+        tests_added:
+            - TestIntegration_AsymmetricSignVerify
+            - TestIntegration_AsymmetricDecrypt
+            - TestIntegration_GetPublicKey
+        verification: PASS
+        notes: Storage builds and vets clean. Server has duplicate method defs (stubs in server.go vs real impls in asymmetric.go) -- Wave 2 must remove stubs. Added AsymmetricKey/HMACKey fields to StoredCryptoKeyVersion and wired generateKeyMaterial into CreateCryptoKey/CreateCryptoKeyVersion in storage.go (needed for asymmetric key creation).
+    B:
+        status: complete
+        branch: saw/kms-full-rpc-coverage/wave1-agent-B
+        commit: a62dae8
+        files_changed:
+            - internal/storage/mac.go
+            - internal/server/mac.go
+            - mac_test.go
+        files_created:
+            - internal/storage/mac.go
+            - internal/server/mac.go
+            - mac_test.go
+        tests_added:
+            - TestIntegration_MacSignVerify
+            - TestIntegration_MacSignWrongPurpose
+        verification: PASS
+        notes: 'MacSign and MacVerify fully implemented. Out-of-scope deps: (1) HMACKey field on StoredCryptoKeyVersion in storage.go must be added by another agent, (2) MacSign/MacVerify stubs in server.go must be removed at integration to avoid duplicate method definitions.'
+    C:
+        status: complete
+        branch: saw/kms-full-rpc-coverage/wave1-agent-C
+        commit: 5f53944
+        files_changed:
+            - internal/storage/raw.go
+            - internal/storage/random.go
+            - internal/server/raw.go
+            - internal/server/server.go
+            - raw_test.go
+        files_created:
+            - internal/storage/raw.go
+            - internal/storage/random.go
+            - internal/server/raw.go
+            - raw_test.go
+        tests_added:
+            - TestIntegration_RawEncryptDecrypt
+            - TestIntegration_RawDecryptWrongAAD
+            - TestIntegration_GenerateRandomBytes
+        verification: PASS
+        notes: 'All 3 RPCs implemented and tested. Out-of-scope: authz/permissions.go missing RawEncrypt/RawDecrypt/GenerateRandomBytes entries - checkPermission silently allows these operations until added.'
+    D:
+        status: complete
+        branch: saw/kms-full-rpc-coverage/wave1-agent-D
+        commit: bb7b4ad
+        files_changed:
+            - internal/storage/importjob.go
+            - internal/server/importjob.go
+            - importjob_test.go
+            - internal/storage/storage.go
+            - internal/server/server.go
+        files_created:
+            - internal/storage/importjob.go
+            - internal/server/importjob.go
+            - importjob_test.go
+        tests_added:
+            - TestIntegration_ImportJobLifecycle
+            - TestIntegration_ImportCryptoKeyVersion
+        verification: PASS
+        notes: 'Added ImportJobs field to StoredKeyRing in storage.go (interface contract). Lazy-init so existing CreateKeyRing works. Removed 4 Unimplemented stubs from server.go. Out-of-scope: authz/permissions.go needs import job permission entries.'
 pre_mortem:
     overall_risk: medium
     rows:
@@ -569,5 +651,5 @@ critic_report:
     summary: 'Warnings resolved: Wave 1 verification gates narrowed to go build ./internal/storage/... only. All 6 checks pass.'
     reviewed_at: "2026-04-03T17:08:15Z"
     issue_count: 0
-state: WAVE_PENDING
+state: "WAVE_PENDING"
 injection_method: hook

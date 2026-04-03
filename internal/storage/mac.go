@@ -14,9 +14,9 @@ func (s *Storage) MacSign(versionName string, data []byte) ([]byte, error) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	version, err := s.findVersion(versionName)
-	if err != nil {
-		return nil, err
+	version := s.findVersion(versionName)
+	if version == nil {
+		return nil, &ErrNotFound{Resource: versionName}
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
@@ -38,9 +38,9 @@ func (s *Storage) MacVerify(versionName string, data []byte, mac []byte) (bool, 
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	version, err := s.findVersion(versionName)
-	if err != nil {
-		return false, err
+	version := s.findVersion(versionName)
+	if version == nil {
+		return false, &ErrNotFound{Resource: versionName}
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
@@ -55,17 +55,4 @@ func (s *Storage) MacVerify(versionName string, data []byte, mac []byte) (bool, 
 	h.Write(data)
 	expected := h.Sum(nil)
 	return hmac.Equal(expected, mac), nil
-}
-
-// findVersion locates a StoredCryptoKeyVersion by its full resource name.
-// Caller must hold s.mu (read or write lock).
-func (s *Storage) findVersion(versionName string) (*StoredCryptoKeyVersion, error) {
-	for _, keyring := range s.keyrings {
-		for _, cryptoKey := range keyring.CryptoKeys {
-			if version, exists := cryptoKey.Versions[versionName]; exists {
-				return version, nil
-			}
-		}
-	}
-	return nil, &ErrNotFound{Resource: versionName}
 }

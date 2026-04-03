@@ -415,33 +415,6 @@ func (s *Server) RestoreCryptoKeyVersion(ctx context.Context, req *kmspb.Restore
 	return nil, status.Error(codes.Unimplemented, "RestoreCryptoKeyVersion not implemented yet")
 }
 
-func (s *Server) GetPublicKey(ctx context.Context, req *kmspb.GetPublicKeyRequest) (*kmspb.PublicKey, error) {
-	return nil, status.Error(codes.Unimplemented, "GetPublicKey not implemented yet")
-}
-
-func (s *Server) AsymmetricSign(ctx context.Context, req *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "AsymmetricSign not implemented yet")
-}
-
-func (s *Server) AsymmetricDecrypt(ctx context.Context, req *kmspb.AsymmetricDecryptRequest) (*kmspb.AsymmetricDecryptResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "AsymmetricDecrypt not implemented yet")
-}
-
-func (s *Server) MacSign(ctx context.Context, req *kmspb.MacSignRequest) (*kmspb.MacSignResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "MacSign not implemented yet")
-}
-
-func (s *Server) MacVerify(ctx context.Context, req *kmspb.MacVerifyRequest) (*kmspb.MacVerifyResponse, error) {
-	return nil, status.Error(codes.Unimplemented, "MacVerify not implemented yet")
-}
-
-// GenerateRandomBytes is implemented in raw.go
-
-// CreateImportJob, GetImportJob, ListImportJobs, and ImportCryptoKeyVersion
-// are implemented in importjob.go
-
-// RawEncrypt and RawDecrypt are implemented in raw.go
-
 func (s *Server) Decapsulate(ctx context.Context, req *kmspb.DecapsulateRequest) (*kmspb.DecapsulateResponse, error) {
 	return nil, status.Error(codes.Unimplemented, "Decapsulate not implemented yet")
 }

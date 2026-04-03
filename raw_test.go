@@ -50,9 +50,9 @@ func TestIntegration_RawEncryptDecrypt(t *testing.T) {
 
 	// RawEncrypt
 	encResp, err := client.RawEncrypt(ctx, &kmspb.RawEncryptRequest{
-		Name:                         versionName,
-		Plaintext:                    plaintext,
-		AdditionalAuthenticatedData:  aad,
+		Name:                        versionName,
+		Plaintext:                   plaintext,
+		AdditionalAuthenticatedData: aad,
 	})
 	if err != nil {
 		t.Fatalf("RawEncrypt failed: %v", err)
@@ -70,10 +70,10 @@ func TestIntegration_RawEncryptDecrypt(t *testing.T) {
 
 	// RawDecrypt
 	decResp, err := client.RawDecrypt(ctx, &kmspb.RawDecryptRequest{
-		Name:                         versionName,
-		Ciphertext:                   encResp.Ciphertext,
-		InitializationVector:         encResp.InitializationVector,
-		AdditionalAuthenticatedData:  aad,
+		Name:                        versionName,
+		Ciphertext:                  encResp.Ciphertext,
+		InitializationVector:        encResp.InitializationVector,
+		AdditionalAuthenticatedData: aad,
 	})
 	if err != nil {
 		t.Fatalf("RawDecrypt failed: %v", err)
@@ -121,9 +121,9 @@ func TestIntegration_RawDecryptWrongAAD(t *testing.T) {
 
 	// Encrypt with AAD "foo"
 	encResp, err := client.RawEncrypt(ctx, &kmspb.RawEncryptRequest{
-		Name:                         versionName,
-		Plaintext:                    []byte("secret"),
-		AdditionalAuthenticatedData:  []byte("foo"),
+		Name:                        versionName,
+		Plaintext:                   []byte("secret"),
+		AdditionalAuthenticatedData: []byte("foo"),
 	})
 	if err != nil {
 		t.Fatalf("RawEncrypt failed: %v", err)
@@ -131,10 +131,10 @@ func TestIntegration_RawDecryptWrongAAD(t *testing.T) {
 
 	// Decrypt with AAD "bar" -- should fail
 	_, err = client.RawDecrypt(ctx, &kmspb.RawDecryptRequest{
-		Name:                         versionName,
-		Ciphertext:                   encResp.Ciphertext,
-		InitializationVector:         encResp.InitializationVector,
-		AdditionalAuthenticatedData:  []byte("bar"),
+		Name:                        versionName,
+		Ciphertext:                  encResp.Ciphertext,
+		InitializationVector:        encResp.InitializationVector,
+		AdditionalAuthenticatedData: []byte("bar"),
 	})
 	if err == nil {
 		t.Fatal("Expected error when decrypting with wrong AAD, got nil")

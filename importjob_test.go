@@ -212,9 +212,9 @@ func TestIntegration_ImportCryptoKeyVersion(t *testing.T) {
 
 	t.Run("ImportCryptoKeyVersion", func(t *testing.T) {
 		resp, err := client.ImportCryptoKeyVersion(ctx, &kmspb.ImportCryptoKeyVersionRequest{
-			Parent:    cryptoKeyName,
-			Algorithm: kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION,
-			ImportJob: importJobName,
+			Parent:     cryptoKeyName,
+			Algorithm:  kmspb.CryptoKeyVersion_GOOGLE_SYMMETRIC_ENCRYPTION,
+			ImportJob:  importJobName,
 			WrappedKey: wrappedKey,
 		})
 		if err != nil {

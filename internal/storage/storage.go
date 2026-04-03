@@ -79,9 +79,9 @@ type StoredCryptoKeyVersion struct {
 	State         kmspb.CryptoKeyVersion_CryptoKeyVersionState
 	CreateTime    time.Time
 	Algorithm     kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm
-	SymmetricKey  []byte                // AES key for symmetric encryption
+	SymmetricKey  []byte                 // AES key for symmetric encryption
 	AsymmetricKey *AsymmetricKeyMaterial // RSA/EC key material for asymmetric operations
-	HMACKey       []byte                // HMAC key for MAC operations
+	HMACKey       []byte                 // HMAC key for MAC operations
 }
 
 // NewStorage creates a new storage instance

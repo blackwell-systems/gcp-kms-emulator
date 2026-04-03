@@ -85,16 +85,3 @@ func (s *Storage) RawDecrypt(versionName string, ciphertext []byte, iv []byte, a
 
 	return plaintext, nil
 }
-
-// findVersion looks up a StoredCryptoKeyVersion by its full resource name.
-// Must be called with s.mu held (read or write lock).
-func (s *Storage) findVersion(versionName string) *StoredCryptoKeyVersion {
-	for _, keyring := range s.keyrings {
-		for _, cryptoKey := range keyring.CryptoKeys {
-			if version, exists := cryptoKey.Versions[versionName]; exists {
-				return version
-			}
-		}
-	}
-	return nil
-}

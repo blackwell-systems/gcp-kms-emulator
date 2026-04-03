@@ -3,6 +3,7 @@ package gcp_kms_emulator_test
 import (
 	"context"
 	"crypto/ecdsa"
+	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha256"
 	"crypto/x509"
@@ -163,7 +164,7 @@ func TestIntegration_AsymmetricDecrypt(t *testing.T) {
 
 	// Encrypt with RSA OAEP
 	plaintext := []byte("hello, asymmetric decryption!")
-	ciphertext, err := rsa.EncryptOAEP(sha256.New(), nil, rsaPubKey, plaintext, nil)
+	ciphertext, err := rsa.EncryptOAEP(sha256.New(), rand.Reader, rsaPubKey, plaintext, nil)
 	if err != nil {
 		t.Fatalf("EncryptOAEP: %v", err)
 	}
