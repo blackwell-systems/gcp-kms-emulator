@@ -1,0 +1,612 @@
+title: Implement all 13 stubbed gRPC methods for full KMS RPC coverage
+feature_slug: kms-full-rpc-coverage
+verdict: SUITABLE
+suitability_assessment: |
+    SUITABLE -- All five suitability questions resolve cleanly.
+
+    1. File decomposition: The 13 stub methods split naturally into 4 crypto
+       domains (asymmetric, MAC, raw encrypt, import jobs) plus misc
+       (GenerateRandomBytes, RestoreCryptoKeyVersion, Decapsulate). Each domain
+       gets its own new server and storage files. No two agents modify the same
+       file in the same wave.
+
+    2. Investigation-first: None. All stubs are well-defined with clear proto types.
+
+    3. Interface discoverability: Yes. Storage layer methods are the cross-agent
+       boundary. Shared types (AsymmetricKeyMaterial, StoredImportJob) and the
+       generateKeyMaterial function must be created in a scaffold file
+       (internal/storage/keymaterial.go) before Wave 1 launches.
+
+    4. Pre-implementation status: All 13 methods return Unimplemented. Existing
+       17 methods and tests pass. Permission entries exist for GetPublicKey,
+       AsymmetricSign, AsymmetricDecrypt, MacSign, MacVerify. Missing entries
+       for 8 other operations are added in Wave 2.
+
+    5. Parallelization value: HIGH. 4 parallel agents in Wave 1, each with
+       3-4 files of real crypto logic. Clear speedup over sequential.
+
+    Estimated times:
+    - Scout: ~10 min
+    - Agent execution: ~15 min (4 parallel + 1 sequential wave)
+    - Merge: ~5 min
+    Total: ~30 min. Sequential baseline: ~50 min. Savings: ~20 min (40%).
+
+    SCAFFOLD REQUIRED: Before Wave 1, create internal/storage/keymaterial.go
+    containing AsymmetricKeyMaterial struct, StoredImportJob struct, and
+    generateKeyMaterial() function. Full contents specified in interface
+    contracts below.
+test_command: go test -v ./...
+lint_command: go vet ./...
+file_ownership:
+    - file: internal/storage/asymmetric.go
+      agent: A
+      wave: 1
+      action: new
+    - file: internal/server/asymmetric.go
+      agent: A
+      wave: 1
+      action: new
+    - file: asymmetric_test.go
+      agent: A
+      wave: 1
+      action: new
+    - file: internal/storage/mac.go
+      agent: B
+      wave: 1
+      action: new
+    - file: internal/server/mac.go
+      agent: B
+      wave: 1
+      action: new
+    - file: mac_test.go
+      agent: B
+      wave: 1
+      action: new
+    - file: internal/storage/raw.go
+      agent: C
+      wave: 1
+      action: new
+    - file: internal/storage/random.go
+      agent: C
+      wave: 1
+      action: new
+    - file: internal/server/raw.go
+      agent: C
+      wave: 1
+      action: new
+    - file: raw_test.go
+      agent: C
+      wave: 1
+      action: new
+    - file: internal/storage/importjob.go
+      agent: D
+      wave: 1
+      action: new
+    - file: internal/server/importjob.go
+      agent: D
+      wave: 1
+      action: new
+    - file: importjob_test.go
+      agent: D
+      wave: 1
+      action: new
+    - file: internal/storage/storage.go
+      agent: E
+      wave: 2
+      action: modify
+    - file: internal/server/server.go
+      agent: E
+      wave: 2
+      action: modify
+    - file: internal/authz/permissions.go
+      agent: E
+      wave: 2
+      action: modify
+interface_contracts:
+    - name: StoredCryptoKeyVersion new fields
+      description: |
+        Add AsymmetricKey and HMACKey fields to StoredCryptoKeyVersion in storage.go.
+        Populated during key creation based on algorithm.
+      definition: |
+        AsymmetricKey *AsymmetricKeyMaterial
+        HMACKey       []byte
+      location: internal/storage/storage.go
+    - name: StoredKeyRing.ImportJobs field
+      description: Add ImportJobs map to StoredKeyRing for import job storage.
+      definition: |
+        ImportJobs map[string]*StoredImportJob
+      location: internal/storage/storage.go
+    - name: Storage.AsymmetricSign
+      description: Sign digest using asymmetric key version private key.
+      definition: |
+        func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType string) ([]byte, error)
+      location: internal/storage/asymmetric.go
+    - name: Storage.AsymmetricDecrypt
+      description: Decrypt ciphertext using asymmetric RSA key version.
+      definition: |
+        func (s *Storage) AsymmetricDecrypt(versionName string, ciphertext []byte) ([]byte, error)
+      location: internal/storage/asymmetric.go
+    - name: Storage.GetPublicKey
+      description: Return PEM-encoded public key for asymmetric key version.
+      definition: |
+        func (s *Storage) GetPublicKey(versionName string) (string, int32, error)
+      location: internal/storage/asymmetric.go
+    - name: Storage.MacSign
+      description: Create HMAC tag for data using MAC key version.
+      definition: |
+        func (s *Storage) MacSign(versionName string, data []byte) ([]byte, error)
+      location: internal/storage/mac.go
+    - name: Storage.MacVerify
+      description: Verify HMAC tag against data using MAC key version.
+      definition: |
+        func (s *Storage) MacVerify(versionName string, data []byte, mac []byte) (bool, error)
+      location: internal/storage/mac.go
+    - name: Storage.RawEncrypt
+      description: AES-GCM encrypt without envelope wrapping.
+      definition: |
+        func (s *Storage) RawEncrypt(versionName string, plaintext []byte, aad []byte) (ciphertext []byte, iv []byte, tagLen int32, err error)
+      location: internal/storage/raw.go
+    - name: Storage.RawDecrypt
+      description: AES-GCM decrypt without envelope wrapping.
+      definition: |
+        func (s *Storage) RawDecrypt(versionName string, ciphertext []byte, iv []byte, aad []byte) ([]byte, error)
+      location: internal/storage/raw.go
+    - name: Storage.CreateImportJob
+      description: Create import job with RSA wrapping key.
+      definition: |
+        func (s *Storage) CreateImportJob(keyringName, importJobID string, importMethod int32, protectionLevel int32) (*StoredImportJob, error)
+      location: internal/storage/importjob.go
+    - name: Storage.GetImportJob
+      description: Retrieve import job by name.
+      definition: |
+        func (s *Storage) GetImportJob(name string) (*StoredImportJob, error)
+      location: internal/storage/importjob.go
+    - name: Storage.ListImportJobs
+      description: List import jobs in a keyring.
+      definition: |
+        func (s *Storage) ListImportJobs(keyringName string) ([]*StoredImportJob, error)
+      location: internal/storage/importjob.go
+    - name: Storage.ImportCryptoKeyVersion
+      description: Import wrapped key material into a crypto key version.
+      definition: |
+        func (s *Storage) ImportCryptoKeyVersion(keyName string, algorithm int32, importJobName string, wrappedKey []byte) (*StoredCryptoKeyVersion, error)
+      location: internal/storage/importjob.go
+    - name: Storage.GenerateRandomBytes
+      description: Generate cryptographically random bytes.
+      definition: |
+        func (s *Storage) GenerateRandomBytes(length int32) ([]byte, error)
+      location: internal/storage/random.go
+    - name: Storage.RestoreCryptoKeyVersion
+      description: Restore DESTROY_SCHEDULED version to DISABLED.
+      definition: |
+        func (s *Storage) RestoreCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersion, error)
+      location: internal/storage/storage.go
+    - name: generateKeyMaterial
+      description: |
+        Generate key material based on algorithm. Returns symmetric key, asymmetric
+        key material, and HMAC key (only one non-nil based on algorithm).
+        Lives in scaffold file internal/storage/keymaterial.go.
+      definition: |
+        func generateKeyMaterial(algorithm kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) (symmetricKey []byte, asymKey *AsymmetricKeyMaterial, hmacKey []byte, err error)
+      location: internal/storage/keymaterial.go
+waves:
+    - number: 1
+      agents:
+        - id: A
+          task: |
+            ## Agent A -- Asymmetric Crypto Operations
+
+            Implement AsymmetricSign, AsymmetricDecrypt, and GetPublicKey.
+
+            ### Files to create
+
+            **1. `internal/storage/asymmetric.go`** (package storage)
+
+            Three methods on `*Storage`:
+
+            `AsymmetricSign(versionName string, digest []byte, digestType string) ([]byte, error)`
+            - s.mu.RLock(), find version iterating s.keyrings -> cryptoKeys -> versions
+            - Validate: exists, State==ENABLED, AsymmetricKey!=nil
+            - Parse key: key, _ := x509.ParsePKCS8PrivateKey(version.AsymmetricKey.PrivateKeyDER)
+            - RSA: rsa.SignPKCS1v15(rand.Reader, rsaKey, hashType, digest)
+            - EC: ecdsa.SignASN1(rand.Reader, ecKey, digest)
+            - Map digestType: "SHA256"->crypto.SHA256, "SHA384"->crypto.SHA384, "SHA512"->crypto.SHA512
+            - Return ErrFailedPrecondition for wrong key type or nil AsymmetricKey
+
+            `AsymmetricDecrypt(versionName string, ciphertext []byte) ([]byte, error)`
+            - RLock, find version, validate ENABLED + AsymmetricKey + is RSA
+            - rsa.DecryptOAEP(sha256.New(), rand.Reader, privateKey, ciphertext, nil)
+
+            `GetPublicKey(versionName string) (string, int32, error)`
+            - RLock, find version, validate ENABLED + AsymmetricKey
+            - Return version.AsymmetricKey.PublicKeyPEM, int32(version.Algorithm), nil
+
+            Imports: crypto/ecdsa, crypto/rsa, crypto/sha256, crypto/sha512, crypto/rand,
+            crypto/x509, crypto, fmt, kmspb
+
+            **2. `internal/server/asymmetric.go`** (package server)
+
+            Three methods on `*Server` that REPLACE stubs in server.go (removed Wave 2):
+
+            `AsymmetricSign(ctx context.Context, req *kmspb.AsymmetricSignRequest) (*kmspb.AsymmetricSignResponse, error)`
+            - requireField(req.Name, "name"), validate req.Digest != nil
+            - checkPermission(ctx, "AsymmetricSign", authz.NormalizeCryptoKeyVersionResource(req.Name))
+            - Extract digest bytes+type from req.Digest oneof (Sha256/Sha384/Sha512)
+            - sig, err := s.storage.AsymmetricSign(req.Name, digestBytes, digestType)
+            - Return &kmspb.AsymmetricSignResponse{Signature: sig}
+
+            `AsymmetricDecrypt(ctx, req) (*kmspb.AsymmetricDecryptResponse, error)`
+            - requireField, validate Ciphertext, checkPermission("AsymmetricDecrypt")
+            - pt, err := s.storage.AsymmetricDecrypt(req.Name, req.Ciphertext)
+            - Return &kmspb.AsymmetricDecryptResponse{Plaintext: pt}
+
+            `GetPublicKey(ctx, req) (*kmspb.PublicKey, error)`
+            - requireField, checkPermission("GetPublicKey")
+            - pemStr, alg, err := s.storage.GetPublicKey(req.Name)
+            - Return &kmspb.PublicKey{Pem: pemStr, Algorithm: CryptoKeyVersionAlgorithm(alg)}
+
+            Imports: same as server.go (kmspb, codes, status, authz, storage)
+
+            **3. `asymmetric_test.go`** (package gcp_kms_emulator_test)
+
+            Uses setupTestServer/setupTestClient from integration_test.go.
+
+            TestIntegration_AsymmetricSignVerify: Create keyring + ASYMMETRIC_SIGN key with
+            EC_SIGN_P256_SHA256. Hash data with sha256.Sum256. AsymmetricSign. GetPublicKey,
+            parse PEM with x509.ParsePKIXPublicKey, verify with ecdsa.VerifyASN1.
+
+            TestIntegration_AsymmetricDecrypt: Create ASYMMETRIC_DECRYPT key with
+            RSA_DECRYPT_OAEP_2048_SHA256. GetPublicKey, parse RSA pub, encrypt with
+            rsa.EncryptOAEP. AsymmetricDecrypt, verify roundtrip.
+
+            TestIntegration_GetPublicKey: Verify PEM non-empty and parseable.
+
+            NOTE: Tests pass only after Wave 2 merge (stubs removed).
+
+            ### Verification gate
+            go build ./internal/storage/...
+
+            ### Constraints
+            - x509.ParsePKCS8PrivateKey for DER keys
+            - EC: P-256 (SHA-256), P-384 (SHA-384)
+            - RSA: 2048, 3072, 4096 bit
+            - All storage methods use RLock
+          files:
+            - internal/storage/asymmetric.go
+            - internal/server/asymmetric.go
+            - asymmetric_test.go
+        - id: B
+          task: |
+            ## Agent B -- MAC Operations
+
+            Implement MacSign and MacVerify.
+
+            ### Files to create
+
+            **1. `internal/storage/mac.go`** (package storage)
+
+            `MacSign(versionName string, data []byte) ([]byte, error)`
+            - s.mu.RLock(), find version iterating keyrings/cryptoKeys/versions
+            - Validate: exists, ENABLED, version.HMACKey != nil
+            - h := hmac.New(sha256.New, version.HMACKey); h.Write(data); return h.Sum(nil), nil
+
+            `MacVerify(versionName string, data []byte, mac []byte) (bool, error)`
+            - Same find+validate, compute expected, return hmac.Equal(expected, mac), nil
+
+            Imports: crypto/hmac, crypto/sha256, kmspb
+
+            **2. `internal/server/mac.go`** (package server)
+
+            `MacSign(ctx, req) (*kmspb.MacSignResponse, error)`
+            - requireField, validate Data, checkPermission("MacSign"), s.storage.MacSign
+            - Return &kmspb.MacSignResponse{Name: req.Name, Mac: mac}
+
+            `MacVerify(ctx, req) (*kmspb.MacVerifyResponse, error)`
+            - requireField, validate Data+Mac, checkPermission("MacVerify"), s.storage.MacVerify
+            - Return &kmspb.MacVerifyResponse{Name: req.Name, Success: success}
+
+            **3. `mac_test.go`** (package gcp_kms_emulator_test)
+
+            TestIntegration_MacSignVerify: Create MAC key with HMAC_SHA256. MacSign, verify
+            non-empty. MacVerify same -> true. MacVerify wrong data -> false.
+
+            TestIntegration_MacSignWrongPurpose: ENCRYPT_DECRYPT key -> FailedPrecondition.
+
+            ### Verification gate
+            go build ./internal/storage/...
+
+            ### Constraints
+            - crypto/hmac + crypto/sha256 only
+            - hmac.Equal for constant-time comparison
+          files:
+            - internal/storage/mac.go
+            - internal/server/mac.go
+            - mac_test.go
+        - id: C
+          task: |
+            ## Agent C -- Raw Encrypt/Decrypt + GenerateRandomBytes
+
+            Implement RawEncrypt, RawDecrypt, GenerateRandomBytes.
+
+            ### Files to create
+
+            **1. `internal/storage/raw.go`** (package storage)
+
+            `RawEncrypt(versionName string, plaintext []byte, aad []byte) ([]byte, []byte, int32, error)`
+            - RLock, find version, validate ENABLED + SymmetricKey non-nil
+            - AES-GCM: aes.NewCipher, cipher.NewGCM, random nonce, gcm.Seal
+            - Return sealed, nonce, int32(gcm.Overhead()), nil
+
+            `RawDecrypt(versionName string, ciphertext []byte, iv []byte, aad []byte) ([]byte, error)`
+            - RLock, find version, validate, AES-GCM, gcm.Open(nil, iv, ciphertext, aad)
+
+            **2. `internal/storage/random.go`** (package storage)
+
+            `GenerateRandomBytes(length int32) ([]byte, error)`
+            - Validate 0 < length <= 1024
+            - buf := make([]byte, length); io.ReadFull(rand.Reader, buf)
+
+            **3. `internal/server/raw.go`** (package server)
+
+            `RawEncrypt(ctx, req) (*kmspb.RawEncryptResponse, error)`
+            - requireField, validate Plaintext, checkPermission("RawEncrypt")
+            - ct, iv, tagLen, _ := s.storage.RawEncrypt(...)
+            - Return &kmspb.RawEncryptResponse{Ciphertext, InitializationVector, TagLength}
+
+            `RawDecrypt(ctx, req) (*kmspb.RawDecryptResponse, error)`
+            - requireField, validate Ciphertext+IV, checkPermission("RawDecrypt")
+            - Return &kmspb.RawDecryptResponse{Plaintext: pt}
+
+            `GenerateRandomBytes(ctx, req) (*kmspb.GenerateRandomBytesResponse, error)`
+            - requireField(req.Location, "location"), checkPermission("GenerateRandomBytes")
+            - Return &kmspb.GenerateRandomBytesResponse{Data: data}
+
+            **4. `raw_test.go`** (package gcp_kms_emulator_test)
+
+            TestIntegration_RawEncryptDecrypt: RAW_ENCRYPT_DECRYPT key with AES_256_GCM.
+            RawEncrypt, verify ct/IV/TagLength. RawDecrypt, verify roundtrip.
+
+            TestIntegration_RawDecryptWrongAAD: Encrypt AAD "foo", decrypt AAD "bar" -> error.
+
+            TestIntegration_GenerateRandomBytes: length=32 -> 32 bytes. length=0 -> error.
+
+            ### Verification gate
+            go build ./internal/storage/...
+
+            ### Constraints
+            - AES-256-GCM only (32-byte keys)
+            - GenerateRandomBytes max 1024 bytes
+          files:
+            - internal/storage/raw.go
+            - internal/storage/random.go
+            - internal/server/raw.go
+            - raw_test.go
+        - id: D
+          task: |
+            ## Agent D -- Import Job Operations
+
+            Implement CreateImportJob, GetImportJob, ListImportJobs, ImportCryptoKeyVersion.
+
+            ### Files to create
+
+            **1. `internal/storage/importjob.go`** (package storage)
+
+            `CreateImportJob(keyringName, importJobID string, importMethod int32, protectionLevel int32) (*StoredImportJob, error)`
+            - s.mu.Lock(), find keyring -> ErrNotFound
+            - name := fmt.Sprintf("%s/importJobs/%s", keyringName, importJobID)
+            - Check keyring.ImportJobs[name] -> ErrAlreadyExists
+            - Generate RSA-2048 wrapping keypair, PEM-encode public key
+            - Create StoredImportJob{State: 1 (ACTIVE), ExpireTime: now+72h, ...}
+
+            `GetImportJob(name string) (*StoredImportJob, error)`
+            - RLock, iterate keyrings checking ImportJobs -> ErrNotFound
+
+            `ListImportJobs(keyringName string) ([]*StoredImportJob, error)`
+            - RLock, find keyring -> ErrNotFound, return all ImportJobs
+
+            `ImportCryptoKeyVersion(keyName string, algorithm int32, importJobName string, wrappedKey []byte) (*StoredCryptoKeyVersion, error)`
+            - Lock, find cryptoKey + importJob, validate importJob State==1
+            - Unwrap with RSA-OAEP, create new version with unwrapped SymmetricKey
+
+            **2. `internal/server/importjob.go`** (package server)
+
+            `CreateImportJob(ctx, req) (*kmspb.ImportJob, error)`
+            - requireField(Parent), requireField(ImportJobId), validate ImportJob non-nil
+            - checkPermission("CreateImportJob", NormalizeKeyRingResource)
+            - Convert StoredImportJob to kmspb.ImportJob proto
+
+            `GetImportJob`, `ListImportJobs` - similar pattern
+
+            `ImportCryptoKeyVersion(ctx, req) (*kmspb.CryptoKeyVersion, error)`
+            - requireField(Parent), requireField(ImportJob)
+            - checkPermission("ImportCryptoKeyVersion", NormalizeCryptoKeyResource)
+            - Extract wrappedKey from req (WrappedKey or RsaAesWrappedKey oneof)
+
+            Import timestamppb for time conversion.
+
+            **3. `importjob_test.go`** (package gcp_kms_emulator_test)
+
+            TestIntegration_ImportJobLifecycle: Create + Get + List import job.
+
+            TestIntegration_ImportCryptoKeyVersion: Create import job, encrypt AES key
+            with import job public key, import it.
+
+            ### Verification gate
+            go build ./internal/storage/...
+
+            ### Constraints
+            - RSA-2048 OAEP SHA-256 for wrapping
+            - ImportJob expires after 3 days
+            - encoding/pem for PEM operations
+          files:
+            - internal/storage/importjob.go
+            - internal/server/importjob.go
+            - importjob_test.go
+    - number: 2
+      agents:
+        - id: E
+          task: |
+            ## Agent E -- Wire Everything: Shared File Modifications
+
+            Modify storage.go, server.go, and permissions.go to connect Wave 1 work.
+
+            ### 1. `internal/storage/storage.go`
+
+            a) Add to StoredCryptoKeyVersion struct (after SymmetricKey line 81):
+               AsymmetricKey *AsymmetricKeyMaterial
+               HMACKey       []byte
+
+            b) Add to StoredKeyRing struct (after CryptoKeys line 60):
+               ImportJobs map[string]*StoredImportJob
+
+            c) In CreateKeyRing (~line 104), add to StoredKeyRing literal:
+               ImportJobs: make(map[string]*StoredImportJob),
+
+            d) In CreateCryptoKey (~line 172), replace symmetric key generation with:
+               symKey, asymKey, hmacKey, err := generateKeyMaterial(algorithm)
+               Then set all three fields on StoredCryptoKeyVersion.
+
+            e) Same in CreateCryptoKeyVersion (~line 394).
+
+            f) Add RestoreCryptoKeyVersion:
+               func (s *Storage) RestoreCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyVersion, error)
+               Find version, validate DESTROY_SCHEDULED, set DISABLED, return proto.
+
+            ### 2. `internal/server/server.go`
+
+            a) DELETE all 14 stub methods (lines ~414-468) returning Unimplemented.
+
+            b) ADD RestoreCryptoKeyVersion server method:
+               requireField, checkPermission("RestoreCryptoKeyVersion"), s.storage.RestoreCryptoKeyVersion
+
+            c) ADD Decapsulate minimal stub:
+               requireField, return Unimplemented("KEM not yet supported")
+
+            ### 3. `internal/authz/permissions.go`
+
+            Add to OperationPermissions:
+            - GenerateRandomBytes: cloudkms.locations.generateRandomBytes, Self
+            - RawEncrypt: cloudkms.cryptoKeyVersions.useToEncrypt, Self
+            - RawDecrypt: cloudkms.cryptoKeyVersions.useToDecrypt, Self
+            - CreateImportJob: cloudkms.importJobs.create, Parent
+            - GetImportJob: cloudkms.importJobs.get, Self
+            - ListImportJobs: cloudkms.importJobs.list, Parent
+            - ImportCryptoKeyVersion: cloudkms.cryptoKeyVersions.create, Parent
+            - Decapsulate: cloudkms.cryptoKeyVersions.useToDecapsulate, Self
+
+            ### Verification gate
+            go build ./... && go vet ./... && go test -v ./...
+
+            ### Constraints
+            - Do NOT modify Wave 1 files
+            - Existing tests must continue to pass
+            - RestoreCryptoKeyVersion sets state to DISABLED (not ENABLED)
+            - Decapsulate remains a stub with TODO
+            - Remove unused io import from storage.go if needed
+          files:
+            - internal/storage/storage.go
+            - internal/server/server.go
+            - internal/authz/permissions.go
+          dependencies:
+            - A
+            - B
+            - C
+            - D
+quality_gates:
+    level: standard
+    gates:
+        - type: build
+          command: go build ./...
+          required: true
+        - type: lint
+          command: go vet ./...
+          required: true
+        - type: test
+          command: go test -v ./...
+          required: true
+pre_mortem:
+    overall_risk: medium
+    rows:
+        - scenario: |
+            Duplicate method definitions in Wave 1: server method files conflict
+            with stubs still in server.go.
+          likelihood: high
+          impact: medium
+          mitigation: |
+            Wave 1 verification gates test only storage layer compilation.
+            Full module build requires Wave 2 stub removal. Integration tests
+            run post-merge only.
+        - scenario: |
+            Wave 1 code references struct fields (AsymmetricKey, HMACKey,
+            ImportJobs) not yet added to storage.go until Wave 2.
+          likelihood: high
+          impact: medium
+          mitigation: |
+            Wave 1 storage files will not compile against full module until
+            Wave 2 completes. Verification gates use package-scoped build.
+            AsymmetricKeyMaterial type is in scaffold keymaterial.go.
+        - scenario: |
+            generateKeyMaterial in scaffold does not cover all algorithm variants.
+          likelihood: medium
+          impact: high
+          mitigation: |
+            Scaffold includes comprehensive algorithm handling with default
+            fallback. Post-merge test suite validates all paths.
+        - scenario: |
+            Missing IAM permission entries cause PermissionDenied.
+          likelihood: low
+          impact: low
+          mitigation: |
+            IAM disabled by default. Agent E adds all entries in Wave 2.
+critic_report:
+    verdict: ISSUES
+    agent_reviews:
+        A:
+            agent_id: A
+            verdict: ISSUES
+            issues:
+                - check: side_effect_completeness
+                  severity: warning
+                  description: Verification gate includes go vet ./internal/server/... but internal/server/asymmetric.go will define AsymmetricSign, AsymmetricDecrypt, GetPublicKey methods on *Server that already exist as stubs in server.go (lines 418-428). Go compiler will reject duplicate methods. Gate should be go build ./internal/storage/... only, or the stubs must be removed first.
+                  file: internal/server/asymmetric.go
+                  symbol: AsymmetricSign
+        B:
+            agent_id: B
+            verdict: ISSUES
+            issues:
+                - check: side_effect_completeness
+                  severity: warning
+                  description: Same duplicate-method issue as Agent A. internal/server/mac.go defines MacSign and MacVerify on *Server, conflicting with stubs at server.go lines 430-436. Verification gate go vet ./internal/server/... will fail.
+                  file: internal/server/mac.go
+                  symbol: MacSign
+        C:
+            agent_id: C
+            verdict: ISSUES
+            issues:
+                - check: side_effect_completeness
+                  severity: warning
+                  description: Same duplicate-method issue. internal/server/raw.go defines RawEncrypt, RawDecrypt, GenerateRandomBytes on *Server, conflicting with stubs at server.go lines 438-464. Verification gate will fail.
+                  file: internal/server/raw.go
+                  symbol: RawEncrypt
+        D:
+            agent_id: D
+            verdict: ISSUES
+            issues:
+                - check: side_effect_completeness
+                  severity: warning
+                  description: Same duplicate-method issue. internal/server/importjob.go defines CreateImportJob, GetImportJob, ListImportJobs, ImportCryptoKeyVersion on *Server, conflicting with stubs at server.go lines 442-456. Verification gate will fail.
+                  file: internal/server/importjob.go
+                  symbol: CreateImportJob
+        E:
+            agent_id: E
+            verdict: PASS
+    summary: 'Reviewed 5 agents (A-E) across 2 waves. All file existence checks pass: 14 new files correctly absent, 3 modify targets exist. Symbol accuracy is strong -- struct fields, function signatures, helper functions, and authz normalize functions all verified against source. Line number references are accurate (within 1-2 lines). File ownership is fully disjoint. Interface contracts are syntactically valid and type-consistent. Import chains resolve via go.mod or stdlib. Two issues found: (1) Wave 1 verification gates for agents A-D include ''go vet ./internal/server/...'' which requires compilation, but Wave 1 server files will have duplicate method definitions with existing stubs in server.go until Agent E removes them in Wave 2 -- the gates will fail as written. (2) The IMPL suitability assessment says ''14 stub methods'' but server.go contains 15 stubs (lines 414-468). Neither issue blocks execution since the pre_mortem acknowledges the compilation ordering risk and the stub count is cosmetic, but the verification gates need adjustment.'
+    reviewed_at: "2026-04-03T16:59:57Z"
+    issue_count: 2
+state: SCAFFOLD_COMMITTED
+scaffolds:
+    - file: internal/storage/keymaterial.go
+      contents: "AsymmetricKeyMaterial struct, StoredImportJob struct, generateKeyMaterial()"
+      import_path: github.com/blackwell-systems/gcp-kms-emulator/internal/storage
+      status: "committed (6806da5)"
+injection_method: hook
