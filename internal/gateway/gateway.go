@@ -85,11 +85,15 @@ func (s *Server) Start(ctx context.Context, addr string) error {
 	// Register routes matching GCP's REST API
 	mux.HandleFunc("/v1/", s.handleRequest)
 
-	// Health check
-	mux.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	// Health endpoints
+	healthHandler := func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		fmt.Fprintf(w, `{"status":"healthy"}`)
-	})
+		fmt.Fprintf(w, `{"status":"ok"}`)
+	}
+	mux.HandleFunc("/health", healthHandler)
+	mux.HandleFunc("/healthz", healthHandler)
+	mux.HandleFunc("/readyz", healthHandler)
 
 	s.httpServer = &http.Server{
 		Addr:    addr,

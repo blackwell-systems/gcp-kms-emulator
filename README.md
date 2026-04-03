@@ -283,7 +283,7 @@ The KMS emulator supports optional permission checks using the [GCP IAM Emulator
   - `off` - No permission checks (legacy behavior)
   - `permissive` - Check permissions, fail-open on connectivity errors
   - `strict` - Check permissions, fail-closed on connectivity errors (for CI)
-- `IAM_HOST` - IAM emulator address (default: `localhost:8080`)
+- `IAM_EMULATOR_HOST` - IAM emulator address (default: `localhost:8080`)
 
 ### Usage
 
@@ -299,13 +299,13 @@ server
 iam-emulator
 
 # Start KMS with IAM checks (fail-open)
-IAM_MODE=permissive IAM_HOST=localhost:8080 server
+IAM_MODE=permissive IAM_EMULATOR_HOST=localhost:8080 server
 ```
 
 **With IAM (strict mode for CI):**
 ```bash
 # All operations require valid permissions
-IAM_MODE=strict IAM_HOST=localhost:8080 server
+IAM_MODE=strict IAM_EMULATOR_HOST=localhost:8080 server
 ```
 
 ### Principal Injection

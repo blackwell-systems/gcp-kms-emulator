@@ -14,6 +14,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"log"
@@ -36,10 +37,23 @@ var (
 )
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "GCP KMS Emulator v%s (gRPC)\n\n", version)
+		fmt.Fprintf(os.Stderr, "Usage: server [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEnvironment Variables:\n")
+		fmt.Fprintf(os.Stderr, "  GCP_KMS_PORT             gRPC port (default: 9090)\n")
+		fmt.Fprintf(os.Stderr, "  GCP_KMS_LOG_LEVEL        Log level: debug, info, warn, error (default: info)\n")
+		fmt.Fprintf(os.Stderr, "  IAM_MODE                 IAM enforcement: off, permissive, strict (default: off)\n")
+		fmt.Fprintf(os.Stderr, "  IAM_EMULATOR_HOST        IAM emulator address (default: localhost:8080)\n")
+	}
 	flag.Parse()
 
+	iamMode := getEnv("IAM_MODE", "off")
 	log.Printf("GCP KMS Emulator v%s", version)
 	log.Printf("Starting on port %d with log level: %s", *port, *logLevel)
+	log.Printf("IAM mode: %s", iamMode)
 
 	// Create listener
 	lis, err := net.Listen("tcp", fmt.Sprintf(":%d", *port))
@@ -48,7 +62,21 @@ func main() {
 	}
 
 	// Create gRPC server
-	grpcServer := grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	if *logLevel == "debug" {
+		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(func(
+			ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
+		) (any, error) {
+			resp, err := handler(ctx, req)
+			if err != nil {
+				log.Printf("grpc: %s → error: %v", info.FullMethod, err)
+			} else {
+				log.Printf("grpc: %s → ok", info.FullMethod)
+			}
+			return resp, err
+		}))
+	}
+	grpcServer := grpc.NewServer(grpcOpts...)
 
 	// Create and register KMS service
 	kmsServer, err := server.NewServer()

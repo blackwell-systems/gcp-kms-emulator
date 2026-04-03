@@ -40,12 +40,26 @@ var (
 )
 
 func main() {
+	flag.Usage = func() {
+		fmt.Fprintf(os.Stderr, "GCP KMS Emulator v%s (REST API)\n\n", version)
+		fmt.Fprintf(os.Stderr, "Usage: server-rest [flags]\n\n")
+		fmt.Fprintf(os.Stderr, "Flags:\n")
+		flag.PrintDefaults()
+		fmt.Fprintf(os.Stderr, "\nEnvironment Variables:\n")
+		fmt.Fprintf(os.Stderr, "  GCP_KMS_GRPC_PORT        Internal gRPC port (default: 9090)\n")
+		fmt.Fprintf(os.Stderr, "  GCP_KMS_HTTP_PORT        HTTP port (default: 8080)\n")
+		fmt.Fprintf(os.Stderr, "  GCP_KMS_LOG_LEVEL        Log level: debug, info, warn, error (default: info)\n")
+		fmt.Fprintf(os.Stderr, "  IAM_MODE                 IAM enforcement: off, permissive, strict (default: off)\n")
+		fmt.Fprintf(os.Stderr, "  IAM_EMULATOR_HOST        IAM emulator address (default: localhost:8080)\n")
+	}
 	flag.Parse()
 
+	iamMode := getEnv("IAM_MODE", "off")
 	log.Printf("GCP KMS Emulator v%s (REST API)", version)
 	log.Printf("Starting gRPC backend on port %d", *grpcPort)
 	log.Printf("Starting HTTP gateway on port %d", *httpPort)
 	log.Printf("Log level: %s", *logLevel)
+	log.Printf("IAM mode: %s", iamMode)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -57,7 +71,21 @@ func main() {
 		log.Fatalf("Failed to listen on gRPC port: %v", err)
 	}
 
-	grpcServer := grpc.NewServer()
+	var grpcOpts []grpc.ServerOption
+	if *logLevel == "debug" {
+		grpcOpts = append(grpcOpts, grpc.UnaryInterceptor(func(
+			ctx context.Context, req any, info *grpc.UnaryServerInfo, handler grpc.UnaryHandler,
+		) (any, error) {
+			resp, err := handler(ctx, req)
+			if err != nil {
+				log.Printf("grpc: %s → error: %v", info.FullMethod, err)
+			} else {
+				log.Printf("grpc: %s → ok", info.FullMethod)
+			}
+			return resp, err
+		}))
+	}
+	grpcServer := grpc.NewServer(grpcOpts...)
 	kmsServer, err := server.NewServer()
 	if err != nil {
 		log.Fatalf("Failed to create KMS server: %v", err)
