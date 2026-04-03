@@ -10,6 +10,9 @@ import (
 // KMS gRPC service at grpcAddr. Used by gcp-emulator to mount the KMS REST API
 // onto a unified HTTP server.
 func NewGatewayHandler(grpcAddr string) (http.Handler, error) {
-	srv := gateway.NewServer(grpcAddr)
+	srv, err := gateway.NewServer(grpcAddr)
+	if err != nil {
+		return nil, err
+	}
 	return srv.Handler(), nil
 }
