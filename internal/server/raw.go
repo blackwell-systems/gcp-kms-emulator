@@ -23,6 +23,15 @@ func (s *Server) RawEncrypt(ctx context.Context, req *kmspb.RawEncryptRequest) (
 	if err := s.checkPermission(ctx, "RawEncrypt", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
 		return nil, err
 	}
+	if err := verifyCRC32C(req.Plaintext, req.PlaintextCrc32C); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.AdditionalAuthenticatedData, req.AdditionalAuthenticatedDataCrc32C); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.InitializationVector, req.InitializationVectorCrc32C); err != nil {
+		return nil, err
+	}
 
 	ct, iv, tagLen, err := s.storage.RawEncrypt(req.Name, req.Plaintext, req.AdditionalAuthenticatedData)
 	if err != nil {
@@ -56,6 +65,15 @@ func (s *Server) RawDecrypt(ctx context.Context, req *kmspb.RawDecryptRequest) (
 		return nil, status.Error(codes.InvalidArgument, "initialization_vector is required")
 	}
 	if err := s.checkPermission(ctx, "RawDecrypt", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.Ciphertext, req.CiphertextCrc32C); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.AdditionalAuthenticatedData, req.AdditionalAuthenticatedDataCrc32C); err != nil {
+		return nil, err
+	}
+	if err := verifyCRC32C(req.InitializationVector, req.InitializationVectorCrc32C); err != nil {
 		return nil, err
 	}
 
