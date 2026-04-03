@@ -135,6 +135,11 @@ func (s *Storage) ImportCryptoKeyVersion(keyName string, algorithm int32, import
 		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("import job %s is not active", importJobName)}
 	}
 
+	// Validate algorithm is specified
+	if kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm(algorithm) == kmspb.CryptoKeyVersion_CRYPTO_KEY_VERSION_ALGORITHM_UNSPECIFIED {
+		return nil, &ErrFailedPrecondition{Message: "algorithm is required"}
+	}
+
 	// Unwrap the key using RSA-OAEP with SHA-256
 	unwrappedKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, importJob.PrivateKey, wrappedKey, nil)
 	if err != nil {
