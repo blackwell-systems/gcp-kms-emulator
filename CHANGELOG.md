@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.8.2] - 2026-04-06
+
+### Fixed
+
+- Pin Dockerfile to golang:1.25-alpine (go.mod requires go 1.25; unversioned alpine tag caused build failures)
+
 ## [0.8.1] - 2026-04-05
 
 ### Changed
