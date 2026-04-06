@@ -7,7 +7,7 @@
 #   docker build --build-arg VARIANT=dual -t kms-emulator:dual .      # Both protocols
 
 # Build stage
-FROM golang:alpine AS builder
+FROM golang:1.25-alpine AS builder
 
 ARG VARIANT=grpc
 
