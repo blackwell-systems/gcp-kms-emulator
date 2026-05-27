@@ -132,6 +132,23 @@ gcp-emulator start
 - `Encrypt` - Encrypt data with a crypto key (AES-256-GCM)
 - `Decrypt` - Decrypt data with a crypto key (works with any enabled version)
 
+### secp256k1 signing
+
+- **`EC_SIGN_SECP256K1_SHA256`** — secp256k1 ECDSA signing via `AsymmetricSign` (SHA-256 digest) and `GetPublicKey` (PEM)
+
+```bash
+# Create the keyring first, then:
+curl -X POST "http://localhost:8080/v1/projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys?cryptoKeyId=secp256k1-signer" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "purpose": "ASYMMETRIC_SIGN",
+    "versionTemplate": {
+      "algorithm": "EC_SIGN_SECP256K1_SHA256",
+      "protectionLevel": "SOFTWARE"
+    }
+  }'
+```
+
 ### Version State Transitions
 ```
 PENDING_GENERATION → ENABLED → DISABLED → DESTROY_SCHEDULED → DESTROYED

@@ -81,6 +81,10 @@ func generateKeyMaterial(algorithm kmspb.CryptoKeyVersion_CryptoKeyVersionAlgori
 		asymKey, err = generateECKeyMaterial(elliptic.P384())
 		return nil, asymKey, nil, err
 
+	case kmspb.CryptoKeyVersion_EC_SIGN_SECP256K1_SHA256:
+		asymKey, err = generateSecp256k1KeyMaterial()
+		return nil, asymKey, nil, err
+
 	// HMAC algorithms
 	case kmspb.CryptoKeyVersion_HMAC_SHA1:
 		hmacKey = make([]byte, 20)
