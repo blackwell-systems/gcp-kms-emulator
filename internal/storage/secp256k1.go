@@ -25,7 +25,7 @@ type pkcs8PrivateKey struct {
 type sec1ECPrivateKey struct {
 	Version    int
 	PrivateKey []byte
-	NamedCurve asn1.RawValue `asn1:"optional,explicit,tag:0"`
+	NamedCurve asn1.RawValue  `asn1:"optional,explicit,tag:0"`
 	PublicKey  asn1.BitString `asn1:"optional,explicit,tag:1"`
 }
 
