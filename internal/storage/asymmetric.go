@@ -172,11 +172,6 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 		digestType = dt
 	}
 
-	hashType, err := hashFromDigestType(digestType)
-	if err != nil {
-		return nil, &ErrFailedPrecondition{Message: err.Error()}
-	}
-
 	switch version.Algorithm {
 	case kmspb.CryptoKeyVersion_EC_SIGN_SECP256K1_SHA256:
 		sig, err := signSecp256k1(version.AsymmetricKey.PrivateKeyDER, digest)
@@ -185,6 +180,12 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 		}
 		return sig, nil
 	default:
+		// For RSA and stdlib EC signing, convert digestType to crypto.Hash.
+		hashType, err := hashFromDigestType(digestType)
+		if err != nil {
+			return nil, &ErrFailedPrecondition{Message: err.Error()}
+		}
+
 		key, err := x509.ParsePKCS8PrivateKey(version.AsymmetricKey.PrivateKeyDER)
 		if err != nil {
 			return nil, fmt.Errorf("failed to parse private key: %w", err)

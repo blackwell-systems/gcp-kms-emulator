@@ -78,17 +78,12 @@ func marshalSecp256k1PrivateKeyPKCS8(privKey *secp256k1.PrivateKey) ([]byte, err
 		return nil, fmt.Errorf("marshal SEC1 EC private key: %w", err)
 	}
 
-	algoOIDBytes, err := asn1.Marshal(oidSecp256k1)
-	if err != nil {
-		return nil, fmt.Errorf("marshal secp256k1 algorithm OID: %w", err)
-	}
-
 	pkcs8Key := pkcs8PrivateKey{
 		Version: 0,
 		Algorithm: pkix.AlgorithmIdentifier{
 			Algorithm: oidPublicKeyECDSA,
 			Parameters: asn1.RawValue{
-				FullBytes: algoOIDBytes,
+				FullBytes: oidBytes, // Reuse oidBytes from above
 			},
 		},
 		PrivateKey: ecPrivDER,
@@ -160,9 +155,12 @@ func parseSecp256k1PrivateKeyPKCS8(privDER []byte) (*secp256k1.PrivateKey, error
 }
 
 func parseSecp256k1PublicKeyPEM(pemStr string) (*secp256k1.PublicKey, error) {
-	block, _ := pem.Decode([]byte(pemStr))
+	block, rest := pem.Decode([]byte(pemStr))
 	if block == nil {
 		return nil, fmt.Errorf("failed to decode PEM public key")
+	}
+	if len(rest) > 0 {
+		return nil, fmt.Errorf("PEM contains unexpected trailing data (%d bytes)", len(rest))
 	}
 
 	var spki subjectPublicKeyInfo
@@ -188,6 +186,17 @@ func signSecp256k1(privateKeyDER, digest []byte) ([]byte, error) {
 	}
 
 	sig := ecdsa.Sign(privKey, digest)
+
+	// Normalize signature to low-S form for blockchain compatibility.
+	// Bitcoin and Ethereum reject high-S signatures to prevent malleability.
+	// GCP KMS behavior is unspecified, but low-S is the safe default.
+	s := sig.S()
+	if s.IsOverHalfOrder() {
+		s.Negate()
+		r := sig.R()
+		sig = ecdsa.NewSignature(&r, &s)
+	}
+
 	return sig.Serialize(), nil
 }
 
