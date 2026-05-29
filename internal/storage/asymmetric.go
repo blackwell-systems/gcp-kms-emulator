@@ -104,6 +104,7 @@ func isRSADecryptAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm)
 func hashForSignAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) (crypto.Hash, string, error) {
 	switch alg {
 	case kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
+		kmspb.CryptoKeyVersion_EC_SIGN_SECP256K1_SHA256,
 		kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_2048_SHA256,
 		kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_3072_SHA256,
 		kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_4096_SHA256:
@@ -171,29 +172,39 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 		digestType = dt
 	}
 
-	hashType, err := hashFromDigestType(digestType)
-	if err != nil {
-		return nil, &ErrFailedPrecondition{Message: err.Error()}
-	}
-
-	key, err := x509.ParsePKCS8PrivateKey(version.AsymmetricKey.PrivateKeyDER)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse private key: %w", err)
-	}
-
-	switch typedKey := key.(type) {
-	case *rsa.PrivateKey:
-		if !isRSASignAlgorithm(version.Algorithm) {
-			return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("algorithm %s is not an RSA signing algorithm", version.Algorithm)}
+	switch version.Algorithm {
+	case kmspb.CryptoKeyVersion_EC_SIGN_SECP256K1_SHA256:
+		sig, err := signSecp256k1(version.AsymmetricKey.PrivateKeyDER, digest)
+		if err != nil {
+			return nil, &ErrFailedPrecondition{Message: err.Error()}
 		}
-		return rsa.SignPKCS1v15(rand.Reader, typedKey, hashType, digest)
-	case *ecdsa.PrivateKey:
-		if !isECSignAlgorithm(version.Algorithm) {
-			return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("algorithm %s is not an EC signing algorithm", version.Algorithm)}
-		}
-		return ecdsa.SignASN1(rand.Reader, typedKey, digest)
+		return sig, nil
 	default:
-		return nil, &ErrFailedPrecondition{Message: "unsupported key type for signing"}
+		// For RSA and stdlib EC signing, convert digestType to crypto.Hash.
+		hashType, err := hashFromDigestType(digestType)
+		if err != nil {
+			return nil, &ErrFailedPrecondition{Message: err.Error()}
+		}
+
+		key, err := x509.ParsePKCS8PrivateKey(version.AsymmetricKey.PrivateKeyDER)
+		if err != nil {
+			return nil, fmt.Errorf("failed to parse private key: %w", err)
+		}
+
+		switch typedKey := key.(type) {
+		case *rsa.PrivateKey:
+			if !isRSASignAlgorithm(version.Algorithm) {
+				return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("algorithm %s is not an RSA signing algorithm", version.Algorithm)}
+			}
+			return rsa.SignPKCS1v15(rand.Reader, typedKey, hashType, digest)
+		case *ecdsa.PrivateKey:
+			if !isECSignAlgorithm(version.Algorithm) {
+				return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("algorithm %s is not an EC signing algorithm", version.Algorithm)}
+			}
+			return ecdsa.SignASN1(rand.Reader, typedKey, digest)
+		default:
+			return nil, &ErrFailedPrecondition{Message: "unsupported key type for signing"}
+		}
 	}
 }
 
