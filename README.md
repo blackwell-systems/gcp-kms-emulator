@@ -106,6 +106,7 @@ gcp-emulator start
 ### Operations
 - **No GCP Credentials** - Works entirely offline without authentication
 - **Fast & Lightweight** - In-memory storage, starts in milliseconds
+- **Optional Persistence** - Set `GCP_KMS_DATA_DIR` to keep keys across restarts
 - **Docker Support** - Pre-built containers (gRPC-only, REST-only, or dual)
 - **Thread-Safe** - Concurrent access with proper synchronization
 
@@ -436,6 +437,35 @@ docker run -p 8080:8080 gcp-kms-emulator:rest
 ```bash
 docker run -p 9090:9090 -p 8080:8080 gcp-kms-emulator:dual
 ```
+
+### Persist State Across Restarts
+
+By default, key rings, keys and key material live in memory and are gone when the container stops. Every restart then creates new keys, and anything encrypted under the old ones can no longer be decrypted.
+
+Set `GCP_KMS_DATA_DIR` to keep the state on disk. On startup the server restores what the directory holds, and it rewrites `state.json` there after every change. The image creates `/data` for this, so you can mount a volume on it:
+
+```bash
+docker run -p 9090:9090 -p 8080:8080 \
+  -e GCP_KMS_DATA_DIR=/data -v kms-data:/data \
+  gcp-kms-emulator:dual
+```
+
+With Docker Compose:
+
+```yaml
+services:
+  gcp-kms:
+    image: gcp-kms-emulator:dual
+    environment:
+      GCP_KMS_DATA_DIR: /data
+    volumes:
+      - kms-data:/data
+
+volumes:
+  kms-data:
+```
+
+`state.json` holds private key material in plaintext, with mode `0600`. Only use it for development keys. If the file exists but can't be read, the server refuses to start rather than overwrite it. Delete the file (or the volume) to start from scratch.
 
 ### In CI/CD
 

@@ -36,6 +36,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"os"
 
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
 	"google.golang.org/grpc/codes"
@@ -82,10 +83,21 @@ type Server struct {
 	iamMode   emulatorauth.AuthMode
 }
 
+// DataDirEnv names the environment variable holding the directory the emulator
+// persists its state in. When unset, state is kept in memory only.
+const DataDirEnv = "GCP_KMS_DATA_DIR"
+
 // NewServer creates a new KMS server
 func NewServer() (*Server, error) {
 	s := &Server{
 		storage: storage.NewStorage(),
+	}
+
+	// Restore and persist state when a data directory is configured
+	if dataDir := os.Getenv(DataDirEnv); dataDir != "" {
+		if err := s.storage.EnablePersistence(dataDir); err != nil {
+			return nil, fmt.Errorf("failed to enable persistence in %s: %w", dataDir, err)
+		}
 	}
 
 	// Load IAM configuration from environment

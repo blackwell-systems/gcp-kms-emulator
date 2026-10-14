@@ -63,6 +63,11 @@ func (s *Storage) CreateImportJob(keyringName, importJobID string, importMethod 
 	}
 
 	keyring.ImportJobs[name] = importJob
+
+	if err := s.persistLocked(); err != nil {
+		return nil, err
+	}
+
 	return importJob, nil
 }
 
@@ -164,6 +169,10 @@ func (s *Storage) ImportCryptoKeyVersion(keyName string, algorithm int32, import
 
 	cryptoKey.Versions[versionName] = version
 	cryptoKey.NextVersionID++
+
+	if err := s.persistLocked(); err != nil {
+		return nil, err
+	}
 
 	return version, nil
 }

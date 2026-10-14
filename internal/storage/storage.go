@@ -85,6 +85,9 @@ func paginatePage[T any](items []T, pageToken string, pageSize int32) ([]T, stri
 type Storage struct {
 	mu       sync.RWMutex
 	keyrings map[string]*StoredKeyRing
+
+	// persistPath is the state file every mutation is saved to; empty means in-memory only.
+	persistPath string
 }
 
 // StoredKeyRing represents a keyring and its crypto keys
@@ -148,6 +151,10 @@ func (s *Storage) CreateKeyRing(name string) (*kmspb.KeyRing, error) {
 	}
 
 	s.keyrings[name] = keyring
+
+	if err := s.persistLocked(); err != nil {
+		return nil, err
+	}
 
 	return &kmspb.KeyRing{
 		Name:       name,
@@ -251,6 +258,10 @@ func (s *Storage) CreateCryptoKey(keyringName, keyID string, purpose kmspb.Crypt
 	}
 
 	keyring.CryptoKeys[keyName] = cryptoKey
+
+	if err := s.persistLocked(); err != nil {
+		return nil, err
+	}
 
 	return &kmspb.CryptoKey{
 		Name:       keyName,
@@ -458,6 +469,10 @@ func (s *Storage) CreateCryptoKeyVersion(keyName string, req *kmspb.CryptoKeyVer
 	cryptoKey.Versions[versionName] = version
 	cryptoKey.NextVersionID++
 
+	if err := s.persistLocked(); err != nil {
+		return nil, err
+	}
+
 	return &kmspb.CryptoKeyVersion{
 		Name:            versionName,
 		State:           kmspb.CryptoKeyVersion_ENABLED,
@@ -495,6 +510,10 @@ func (s *Storage) UpdateCryptoKeyPrimaryVersion(keyName, versionName string) (*k
 	}
 
 	cryptoKey.PrimaryVersion = versionName
+
+	if err := s.persistLocked(); err != nil {
+		return nil, err
+	}
 
 	primary := cryptoKey.Versions[cryptoKey.PrimaryVersion]
 	return storedKeyToProto(cryptoKey, primary), nil
@@ -587,6 +606,9 @@ func (s *Storage) UpdateCryptoKeyVersion(versionName string, state kmspb.CryptoK
 					return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("target state %v is not permitted; must be ENABLED or DISABLED", state)}
 				}
 				version.State = state
+				if err := s.persistLocked(); err != nil {
+					return nil, err
+				}
 				return &kmspb.CryptoKeyVersion{
 					Name:            version.Name,
 					State:           version.State,
@@ -630,6 +652,9 @@ func (s *Storage) DestroyCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 				// Schedule destruction
 				version.DestroyTime = time.Now().Add(30 * 24 * time.Hour)
 				version.State = kmspb.CryptoKeyVersion_DESTROY_SCHEDULED
+				if err := s.persistLocked(); err != nil {
+					return nil, err
+				}
 				return &kmspb.CryptoKeyVersion{
 					Name:            version.Name,
 					State:           version.State,
@@ -659,6 +684,9 @@ func (s *Storage) RestoreCryptoKeyVersion(versionName string) (*kmspb.CryptoKeyV
 				}
 
 				version.State = kmspb.CryptoKeyVersion_DISABLED
+				if err := s.persistLocked(); err != nil {
+					return nil, err
+				}
 				return &kmspb.CryptoKeyVersion{
 					Name:            version.Name,
 					State:           version.State,
@@ -707,6 +735,10 @@ func (s *Storage) UpdateCryptoKey(keyName string, key *kmspb.CryptoKey, mask *fi
 				// Unrecognised paths are silently ignored
 			}
 		}
+	}
+
+	if err := s.persistLocked(); err != nil {
+		return nil, err
 	}
 
 	primary := cryptoKey.Versions[cryptoKey.PrimaryVersion]

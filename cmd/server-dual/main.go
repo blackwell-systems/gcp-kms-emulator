@@ -51,6 +51,7 @@ func main() {
 		fmt.Fprintf(os.Stderr, "  GCP_KMS_LOG_LEVEL        Log level: debug, info, warn, error (default: info)\n")
 		fmt.Fprintf(os.Stderr, "  IAM_MODE                 IAM enforcement: off, permissive, strict (default: off)\n")
 		fmt.Fprintf(os.Stderr, "  IAM_EMULATOR_HOST        IAM emulator address (default: localhost:8080)\n")
+		fmt.Fprintf(os.Stderr, "  GCP_KMS_DATA_DIR         Directory to persist state in across restarts (default: unset, in-memory only)\n")
 	}
 	flag.Parse()
 
@@ -58,6 +59,9 @@ func main() {
 	log.Printf("GCP KMS Emulator v%s (Dual Protocol)", version)
 	log.Printf("Log level: %s", *logLevel)
 	log.Printf("IAM mode: %s", iamMode)
+	if dataDir := os.Getenv(server.DataDirEnv); dataDir != "" {
+		log.Printf("Persisting state to: %s", dataDir)
+	}
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()

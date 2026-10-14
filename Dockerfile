@@ -60,10 +60,12 @@ COPY --from=builder /build/server .
 EXPOSE 9090
 EXPOSE 8080
 
-# Run as non-root user for security
+# Run as non-root user for security. /data is where GCP_KMS_DATA_DIR usually
+# points; it is created here so a volume mounted on it is writable by kmsmock.
 RUN addgroup -g 1000 kmsmock && \
     adduser -D -u 1000 -G kmsmock kmsmock && \
-    chown -R kmsmock:kmsmock /app
+    mkdir -p /data && \
+    chown -R kmsmock:kmsmock /app /data
 
 USER kmsmock
 
