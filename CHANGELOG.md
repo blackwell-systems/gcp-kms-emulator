@@ -13,6 +13,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   - A `digest`, or a request with neither `data` nor `digest`, is rejected with `INVALID_ARGUMENT`
   - No `data` size limit is enforced; Google does not document one for this algorithm
 
+### Fixed
+
+- `AsymmetricSign` now rejects a request that sets both `data` and `digest` with `INVALID_ARGUMENT` for every algorithm (previously the digest was used and the data silently ignored)
+
 ## [0.8.2] - 2026-04-06
 
 ### Fixed

@@ -20,6 +20,9 @@ func (s *Server) AsymmetricSign(ctx context.Context, req *kmspb.AsymmetricSignRe
 	if req.Digest == nil && len(req.Data) == 0 {
 		return nil, status.Error(codes.InvalidArgument, "either digest or data is required")
 	}
+	if req.Digest != nil && len(req.Data) > 0 {
+		return nil, status.Error(codes.InvalidArgument, "digest and data cannot both be set")
+	}
 	if err := s.checkPermission(ctx, "AsymmetricSign", authz.NormalizeCryptoKeyVersionResource(req.Name)); err != nil {
 		return nil, err
 	}

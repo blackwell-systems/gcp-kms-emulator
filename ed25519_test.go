@@ -155,6 +155,57 @@ func TestIntegration_AsymmetricSign_Ed25519_Rejections(t *testing.T) {
 	}
 }
 
+// TestIntegration_AsymmetricSign_DataAndDigest verifies that supplying both data
+// and digest is rejected for every asymmetric signing algorithm.
+func TestIntegration_AsymmetricSign_DataAndDigest(t *testing.T) {
+	_, lis, cleanup := setupTestServer(t)
+	defer cleanup()
+	conn, connCleanup := setupTestClient(t, lis)
+	defer connCleanup()
+	client := kmspb.NewKeyManagementServiceClient(conn)
+	ctx := context.Background()
+
+	kr, err := client.CreateKeyRing(ctx, &kmspb.CreateKeyRingRequest{
+		Parent:    "projects/test/locations/us-central1",
+		KeyRingId: "both-fields-ring",
+	})
+	if err != nil {
+		t.Fatalf("CreateKeyRing: %v", err)
+	}
+
+	algs := []kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm{
+		kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256,
+		kmspb.CryptoKeyVersion_EC_SIGN_P384_SHA384,
+		kmspb.CryptoKeyVersion_EC_SIGN_SECP256K1_SHA256,
+		kmspb.CryptoKeyVersion_EC_SIGN_ED25519,
+		kmspb.CryptoKeyVersion_RSA_SIGN_PKCS1_2048_SHA256,
+	}
+	sum := sha256.Sum256([]byte("both"))
+	for _, alg := range algs {
+		t.Run(alg.String(), func(t *testing.T) {
+			key, err := client.CreateCryptoKey(ctx, &kmspb.CreateCryptoKeyRequest{
+				Parent:      kr.Name,
+				CryptoKeyId: strings.ToLower(strings.ReplaceAll(alg.String(), "_", "-")),
+				CryptoKey: &kmspb.CryptoKey{
+					Purpose:         kmspb.CryptoKey_ASYMMETRIC_SIGN,
+					VersionTemplate: &kmspb.CryptoKeyVersionTemplate{Algorithm: alg},
+				},
+			})
+			if err != nil {
+				t.Fatalf("CreateCryptoKey: %v", err)
+			}
+			_, err = client.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{
+				Name:   key.Primary.Name,
+				Data:   []byte("both"),
+				Digest: &kmspb.Digest{Digest: &kmspb.Digest_Sha256{Sha256: sum[:]}},
+			})
+			if status.Code(err) != codes.InvalidArgument {
+				t.Fatalf("code = %v (err %v), want InvalidArgument", status.Code(err), err)
+			}
+		})
+	}
+}
+
 func TestIntegration_AsymmetricSign_Ed25519_CRC32C(t *testing.T) {
 	client, key, cleanup := ed25519Setup(t, "ed25519-crc-ring")
 	defer cleanup()
@@ -341,6 +392,11 @@ func TestREST_AsymmetricSign_Ed25519(t *testing.T) {
 	code, out = do("POST", version+":asymmetricSign", `{"digest":{"sha256":"`+base64.StdEncoding.EncodeToString(sum[:])+`"}}`)
 	if code != http.StatusBadRequest {
 		t.Fatalf("digest sign: status %d %v, want 400", code, out)
+	}
+	code, out = do("POST", version+":asymmetricSign",
+		`{"data":"`+base64.StdEncoding.EncodeToString(data)+`","digest":{"sha256":"`+base64.StdEncoding.EncodeToString(sum[:])+`"}}`)
+	if code != http.StatusBadRequest {
+		t.Fatalf("data and digest sign: status %d %v, want 400", code, out)
 	}
 	code, out = do("POST", version+":asymmetricSign", `{}`)
 	if code != http.StatusBadRequest {

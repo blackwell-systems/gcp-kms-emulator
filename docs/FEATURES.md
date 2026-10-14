@@ -25,6 +25,25 @@ The KMS emulator provides complete key management and lifecycle operations with 
 - **Encrypt**: AES-256-GCM symmetric encryption
 - **Decrypt**: AES-256-GCM symmetric decryption with version-aware key selection
 
+### Asymmetric Operations
+- **AsymmetricSign**: sign a `digest` (RSA PKCS#1, ECDSA P-256/P-384/secp256k1) or raw `data`; Ed25519 signs raw `data` only. `data` and `digest` cannot both be set
+- **AsymmetricDecrypt**: RSA OAEP decryption
+- **GetPublicKey**: PEM public key for any asymmetric version
+- Algorithms: `RSA_SIGN_PKCS1_{2048,3072,4096}_SHA256`, `RSA_SIGN_PKCS1_4096_SHA512`, `RSA_DECRYPT_OAEP_{2048,3072,4096}_{SHA1,SHA256}`, `RSA_DECRYPT_OAEP_4096_SHA512`, `EC_SIGN_P256_SHA256`, `EC_SIGN_P384_SHA384`, `EC_SIGN_SECP256K1_SHA256`, `EC_SIGN_ED25519`
+
+### MAC, Raw Encryption and Random Bytes
+- **MacSign / MacVerify**: `HMAC_SHA1`, `HMAC_SHA224`, `HMAC_SHA256`, `HMAC_SHA384`, `HMAC_SHA512`
+- **RawEncrypt / RawDecrypt**: `AES_128_GCM`, `AES_256_GCM`
+- **GenerateRandomBytes**: random byte generation
+
+### Import
+- **CreateImportJob / GetImportJob / ListImportJobs / ImportCryptoKeyVersion**: import wrapped symmetric key material
+
+### Other
+- **RestoreCryptoKeyVersion**: restore a version scheduled for destruction
+- **CRC32C integrity fields** on request and response messages
+- **Pagination** on all List methods
+
 ## IAM Integration
 
 Optional permission checks with GCP IAM Emulator for testing authorization workflows.
@@ -172,14 +191,6 @@ Bidirectional transitions between ENABLED and DISABLED supported.
 
 ## Not Yet Implemented
 
-- Key restoration (RestoreCryptoKeyVersion)
-- Asymmetric operations (AsymmetricSign, AsymmetricDecrypt, GetPublicKey)
-- MAC operations (MacSign, MacVerify)
-- Key import/export (ImportCryptoKeyVersion, CreateImportJob)
-- Raw encryption operations (RawEncrypt, RawDecrypt)
-- Random byte generation (GenerateRandomBytes)
-- CRC32C checksums
-
-**Current coverage:** 14 of ~26 methods (54%)
-
-Covers all essential key management and lifecycle operations.
+- Decapsulate (KEM)
+- Importing asymmetric (RSA/EC/Ed25519) key material
+- HSM and external protection levels (all keys are SOFTWARE)
