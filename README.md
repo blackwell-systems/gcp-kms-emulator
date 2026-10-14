@@ -149,6 +149,29 @@ curl -X POST "http://localhost:8080/v1/projects/my-project/locations/global/keyR
   }'
 ```
 
+### Ed25519 signing
+
+- **`EC_SIGN_ED25519`** - Ed25519 (pure EdDSA) signing via `AsymmetricSign` and `GetPublicKey` (SPKI `PUBLIC KEY` PEM). Software protection only, as in Cloud KMS.
+- Ed25519 signs the raw message: supply `data`. A request with `digest`, or with neither `data` nor `digest`, returns `INVALID_ARGUMENT` (HTTP 400).
+- The emulator does not enforce a maximum `data` size for Ed25519; Google does not document one.
+
+```bash
+curl -X POST "http://localhost:8080/v1/projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys?cryptoKeyId=ed25519-signer" \
+  -H "Content-Type: application/json" \
+  -d '{
+    "purpose": "ASYMMETRIC_SIGN",
+    "versionTemplate": {
+      "algorithm": "EC_SIGN_ED25519",
+      "protectionLevel": "SOFTWARE"
+    }
+  }'
+
+# data is base64-encoded
+curl -X POST "http://localhost:8080/v1/projects/my-project/locations/global/keyRings/my-keyring/cryptoKeys/ed25519-signer/cryptoKeyVersions/1:asymmetricSign" \
+  -H "Content-Type: application/json" \
+  -d '{"data": "aGVsbG8="}'
+```
+
 ### Version State Transitions
 ```
 PENDING_GENERATION → ENABLED → DISABLED → DESTROY_SCHEDULED → DESTROYED

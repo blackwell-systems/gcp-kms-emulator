@@ -28,3 +28,13 @@ type ErrFailedPrecondition struct {
 func (e *ErrFailedPrecondition) Error() string {
 	return e.Message
 }
+
+// ErrInvalidArgument indicates a request argument is not valid for the target
+// resource (for example a digest supplied for a pure-EdDSA key).
+type ErrInvalidArgument struct {
+	Message string
+}
+
+func (e *ErrInvalidArgument) Error() string {
+	return e.Message
+}

@@ -6,6 +6,7 @@ package storage
 
 import (
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/elliptic"
 	"crypto/rand"
 	"crypto/rsa"
@@ -39,7 +40,7 @@ type StoredImportJob struct {
 // generateKeyMaterial creates cryptographic key material for the given algorithm.
 // It returns at most one non-nil key value depending on the algorithm family:
 //   - symmetricKey for GOOGLE_SYMMETRIC_ENCRYPTION and AES_256_GCM
-//   - asymKey for RSA and EC algorithms
+//   - asymKey for RSA, EC and Ed25519 algorithms
 //   - hmacKey for HMAC algorithms
 func generateKeyMaterial(algorithm kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm) (symmetricKey []byte, asymKey *AsymmetricKeyMaterial, hmacKey []byte, err error) {
 	switch algorithm {
@@ -83,6 +84,10 @@ func generateKeyMaterial(algorithm kmspb.CryptoKeyVersion_CryptoKeyVersionAlgori
 
 	case kmspb.CryptoKeyVersion_EC_SIGN_SECP256K1_SHA256:
 		asymKey, err = generateSecp256k1KeyMaterial()
+		return nil, asymKey, nil, err
+
+	case kmspb.CryptoKeyVersion_EC_SIGN_ED25519:
+		asymKey, err = generateEd25519KeyMaterial()
 		return nil, asymKey, nil, err
 
 	// HMAC algorithms
@@ -182,6 +187,35 @@ func generateRSAKeyMaterial(bits int) (*AsymmetricKeyMaterial, error) {
 	pubDER, err := x509.MarshalPKIXPublicKey(&priv.PublicKey)
 	if err != nil {
 		return nil, fmt.Errorf("marshal RSA public key: %w", err)
+	}
+
+	pubPEM := pem.EncodeToMemory(&pem.Block{
+		Type:  "PUBLIC KEY",
+		Bytes: pubDER,
+	})
+
+	return &AsymmetricKeyMaterial{
+		PrivateKeyDER: privDER,
+		PublicKeyPEM:  string(pubPEM),
+	}, nil
+}
+
+// generateEd25519KeyMaterial creates an Ed25519 keypair with PKCS#8 private key
+// DER and PKIX SPKI public key PEM.
+func generateEd25519KeyMaterial() (*AsymmetricKeyMaterial, error) {
+	pub, priv, err := ed25519.GenerateKey(rand.Reader)
+	if err != nil {
+		return nil, fmt.Errorf("generate Ed25519 key: %w", err)
+	}
+
+	privDER, err := x509.MarshalPKCS8PrivateKey(priv)
+	if err != nil {
+		return nil, fmt.Errorf("marshal Ed25519 private key: %w", err)
+	}
+
+	pubDER, err := x509.MarshalPKIXPublicKey(pub)
+	if err != nil {
+		return nil, fmt.Errorf("marshal Ed25519 public key: %w", err)
 	}
 
 	pubPEM := pem.EncodeToMemory(&pem.Block{

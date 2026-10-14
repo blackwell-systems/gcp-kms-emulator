@@ -59,6 +59,7 @@ func storageErr(err error) error {
 	var notFound *storage.ErrNotFound
 	var alreadyExists *storage.ErrAlreadyExists
 	var precondition *storage.ErrFailedPrecondition
+	var invalidArg *storage.ErrInvalidArgument
 	switch {
 	case errors.As(err, &notFound):
 		return status.Error(codes.NotFound, err.Error())
@@ -66,6 +67,8 @@ func storageErr(err error) error {
 		return status.Error(codes.AlreadyExists, err.Error())
 	case errors.As(err, &precondition):
 		return status.Error(codes.FailedPrecondition, err.Error())
+	case errors.As(err, &invalidArg):
+		return status.Error(codes.InvalidArgument, err.Error())
 	default:
 		return status.Error(codes.Internal, err.Error())
 	}

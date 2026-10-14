@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- `EC_SIGN_ED25519` asymmetric signing (pure EdDSA over the raw `data` field) via `AsymmetricSign` and `GetPublicKey` (SPKI PEM), over gRPC and REST
+  - A `digest`, or a request with neither `data` nor `digest`, is rejected with `INVALID_ARGUMENT`
+  - No `data` size limit is enforced; Google does not document one for this algorithm
+
 ## [0.8.2] - 2026-04-06
 
 ### Fixed

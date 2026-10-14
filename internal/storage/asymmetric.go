@@ -5,6 +5,7 @@ package storage
 import (
 	"crypto"
 	"crypto/ecdsa"
+	"crypto/ed25519"
 	"crypto/rand"
 	"crypto/rsa"
 	"crypto/sha1"
@@ -134,8 +135,8 @@ func oaepHashFromAlgorithm(alg kmspb.CryptoKeyVersion_CryptoKeyVersionAlgorithm)
 }
 
 // AsymmetricSign signs a digest (or raw data) using the asymmetric private key of
-// the specified key version. It supports RSA PKCS1v15 and ECDSA signing depending
-// on the key version's algorithm.
+// the specified key version. It supports RSA PKCS1v15, ECDSA and Ed25519 signing
+// depending on the key version's algorithm.
 //
 // If rawData is non-nil, the data is hashed internally using the algorithm's hash
 // function and used as the digest. Otherwise, digest and digestType are used directly.
@@ -158,6 +159,11 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 
 	if version.AsymmetricKey == nil {
 		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version has no asymmetric key material: %s", versionName)}
+	}
+
+	// EC_SIGN_ED25519 is pure EdDSA: it signs the raw data and takes no digest.
+	if version.Algorithm == kmspb.CryptoKeyVersion_EC_SIGN_ED25519 {
+		return signEd25519(version.AsymmetricKey.PrivateKeyDER, digestType, rawData)
 	}
 
 	// If rawData is provided, hash it internally and derive digest/digestType.
@@ -206,6 +212,27 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 			return nil, &ErrFailedPrecondition{Message: "unsupported key type for signing"}
 		}
 	}
+}
+
+// signEd25519 signs rawData with an Ed25519 PKCS#8 private key. Ed25519 keys
+// sign the data itself, so a digest (digestType non-empty) or an absent data
+// field is an invalid argument.
+func signEd25519(privDER []byte, digestType string, rawData []byte) ([]byte, error) {
+	if digestType != "" {
+		return nil, &ErrInvalidArgument{Message: "EC_SIGN_ED25519 keys sign raw data; the digest field is not supported, supply data instead"}
+	}
+	if len(rawData) == 0 {
+		return nil, &ErrInvalidArgument{Message: "EC_SIGN_ED25519 keys require the data field"}
+	}
+	key, err := x509.ParsePKCS8PrivateKey(privDER)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse private key: %w", err)
+	}
+	edKey, ok := key.(ed25519.PrivateKey)
+	if !ok {
+		return nil, &ErrFailedPrecondition{Message: "key is not an Ed25519 private key"}
+	}
+	return ed25519.Sign(edKey, rawData), nil
 }
 
 // AsymmetricDecrypt decrypts ciphertext using the RSA private key of the specified
