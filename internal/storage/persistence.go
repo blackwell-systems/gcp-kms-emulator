@@ -117,6 +117,12 @@ func (s *Storage) EnablePersistence(dataDir string) error {
 
 // persistLocked writes the current state to disk. Callers must hold s.mu.
 // It is a no-op when persistence is disabled.
+//
+// Callers change the in-memory state before calling it and don't roll back
+// when the write fails. After a failed save (a full disk, for example) the
+// client gets an error but the change stays in memory: a retried create fails
+// with AlreadyExists, and the change only reaches disk if a later save
+// succeeds, so a restart before then loses it.
 func (s *Storage) persistLocked() error {
 	if s.persistPath == "" {
 		return nil

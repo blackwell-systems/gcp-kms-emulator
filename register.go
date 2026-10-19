@@ -20,6 +20,8 @@ type options struct{}
 // Register adds the KMS gRPC service to grpcSrv.
 // IAM enforcement is configured via the IAM_MODE and IAM_EMULATOR_HOST
 // environment variables (same as the standalone binary).
+// Setting GCP_KMS_DATA_DIR keeps the state on disk across restarts. Register
+// then returns an error if it can't restore or write the state there.
 // It does not start a listener — the caller owns the grpc.Server lifecycle.
 func Register(grpcSrv *grpc.Server, opts ...Option) error {
 	srv, err := server.NewServer()
