@@ -11,6 +11,8 @@ A production-grade KMS implementation with optional **pre-flight IAM enforcement
 
 **Dual protocol support**: Native gRPC + REST/HTTP. **Real encryption**: AES-256-GCM (not mocked). No GCP credentials required.
 
+**Used by** the [Akash Network console](https://github.com/akash-network/console) (263 stars) in its development environment.
+
 ## Why This Emulator Is Different
 
 Most KMS emulators skip authorization. This one can **enforce production-style IAM authorization policies** using the [IAM Emulator](https://github.com/blackwell-systems/gcp-iam-emulator) as a control plane.
