@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.10.1] - 2026-11-03
+
 ### Fixed
 
 - Errors a caller can cause now return the status code Cloud KMS uses instead of `INTERNAL`:
@@ -17,6 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Documentation
 
+- Doc comments on `persistLocked` and `Register` describe what a failed save leaves behind and how `GCP_KMS_DATA_DIR` affects `Register` (thanks @baktun14)
 - The README listed asymmetric operations, MAC, raw encryption, key import, `RestoreCryptoKeyVersion` and `GenerateRandomBytes` as not implemented, although all of them are. It now lists every supported method and algorithm, documents CRC32C data integrity and the error codes, and names what remains unimplemented.
 
 ## [0.10.0] - 2026-10-14
