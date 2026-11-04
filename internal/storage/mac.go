@@ -43,11 +43,11 @@ func (s *Storage) MacSign(versionName string, data []byte) ([]byte, error) {
 	}
 
 	if cryptoKey.Purpose != kmspb.CryptoKey_MAC {
-		return nil, &ErrFailedPrecondition{Message: "key purpose must be MAC"}
+		return nil, incorrectPurpose(cryptoKey, "MAC")
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+		return nil, versionNotEnabled(versionName, version.State)
 	}
 
 	if version.HMACKey == nil {
@@ -72,11 +72,11 @@ func (s *Storage) MacVerify(versionName string, data []byte, mac []byte) (bool, 
 	}
 
 	if cryptoKey.Purpose != kmspb.CryptoKey_MAC {
-		return false, &ErrFailedPrecondition{Message: "key purpose must be MAC"}
+		return false, incorrectPurpose(cryptoKey, "MAC")
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return false, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+		return false, versionNotEnabled(versionName, version.State)
 	}
 
 	if version.HMACKey == nil {

@@ -7,6 +7,7 @@ require (
 	github.com/blackwell-systems/gcp-emulator-auth v0.4.1
 	github.com/decred/dcrd/dcrec/secp256k1/v4 v4.4.1
 	github.com/grpc-ecosystem/grpc-gateway/v2 v2.28.0
+	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7
 	google.golang.org/grpc v1.79.3
 	google.golang.org/protobuf v1.36.11
 )
@@ -19,5 +20,4 @@ require (
 	golang.org/x/text v0.35.0 // indirect
 	google.golang.org/genproto v0.0.0-20260319201613-d00831a3d3e7 // indirect
 	google.golang.org/genproto/googleapis/api v0.0.0-20260401001100-f93e5f3e9f0f // indirect
-	google.golang.org/genproto/googleapis/rpc v0.0.0-20260319201613-d00831a3d3e7 // indirect
 )

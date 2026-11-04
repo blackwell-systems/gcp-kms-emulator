@@ -68,7 +68,7 @@ func (s *Server) MacVerify(ctx context.Context, req *kmspb.MacVerifyRequest) (*k
 		Success:                  success,
 		VerifiedDataCrc32C:       req.DataCrc32C != nil,
 		VerifiedMacCrc32C:        req.MacCrc32C != nil,
-		VerifiedSuccessIntegrity: true,
+		VerifiedSuccessIntegrity: success, // Cloud KMS mirrors success here; clients discard a response where they differ
 		ProtectionLevel:          kmspb.ProtectionLevel_SOFTWARE,
 	}, nil
 }

@@ -2,6 +2,7 @@ package gcp_kms_emulator_test
 
 import (
 	"context"
+	"strings"
 	"testing"
 
 	kmspb "cloud.google.com/go/kms/apiv1/kmspb"
@@ -151,5 +152,85 @@ func TestErrorCodes_GenerateRandomBytes_InvalidLength(t *testing.T) {
 			LengthBytes: n,
 		})
 		requireCode(t, err, codes.InvalidArgument)
+	}
+}
+
+// Clients match these messages, so they use Cloud KMS's wording.
+func TestErrorCodes_Messages_UseCloudKMSWording(t *testing.T) {
+	client, krName, cleanup := conformanceSetup(t, "err-messages")
+	defer cleanup()
+	ctx := context.Background()
+
+	key, err := client.CreateCryptoKey(ctx, &kmspb.CreateCryptoKeyRequest{
+		Parent:      krName,
+		CryptoKeyId: "signer",
+		CryptoKey: &kmspb.CryptoKey{
+			Purpose:         kmspb.CryptoKey_ASYMMETRIC_SIGN,
+			VersionTemplate: &kmspb.CryptoKeyVersionTemplate{Algorithm: kmspb.CryptoKeyVersion_EC_SIGN_P256_SHA256},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateCryptoKey: %v", err)
+	}
+	version := key.Name + "/cryptoKeyVersions/1"
+	if _, err := client.UpdateCryptoKeyVersion(ctx, &kmspb.UpdateCryptoKeyVersionRequest{
+		CryptoKeyVersion: &kmspb.CryptoKeyVersion{Name: version, State: kmspb.CryptoKeyVersion_DISABLED},
+		UpdateMask:       &fieldmaskpb.FieldMask{Paths: []string{"state"}},
+	}); err != nil {
+		t.Fatalf("UpdateCryptoKeyVersion: %v", err)
+	}
+	digest := &kmspb.Digest{Digest: &kmspb.Digest_Sha256{Sha256: make([]byte, 32)}}
+	_, err = client.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{Name: version, Digest: digest})
+	requireCode(t, err, codes.FailedPrecondition)
+	if want := version + " is not enabled, current state is: DISABLED"; !strings.Contains(status.Convert(err).Message(), want) {
+		t.Errorf("disabled version message = %q, want it to contain %q", status.Convert(err).Message(), want)
+	}
+
+	sym := createSymmetricKey(t, client, krName, "sym")
+	_, err = client.AsymmetricSign(ctx, &kmspb.AsymmetricSignRequest{Name: sym.Name + "/cryptoKeyVersions/1", Digest: digest})
+	requireCode(t, err, codes.FailedPrecondition)
+	if want := sym.Name + " has incorrect key purpose"; !strings.Contains(status.Convert(err).Message(), want) {
+		t.Errorf("wrong purpose message = %q, want it to contain %q", status.Convert(err).Message(), want)
+	}
+}
+
+// Cloud KMS sets verified_success_integrity to the value of success, and
+// clients discard a response where the two differ.
+func TestMacVerify_SuccessIntegrityMirrorsSuccess(t *testing.T) {
+	client, krName, cleanup := conformanceSetup(t, "mac-integrity")
+	defer cleanup()
+	ctx := context.Background()
+
+	key, err := client.CreateCryptoKey(ctx, &kmspb.CreateCryptoKeyRequest{
+		Parent:      krName,
+		CryptoKeyId: "mac",
+		CryptoKey: &kmspb.CryptoKey{
+			Purpose:         kmspb.CryptoKey_MAC,
+			VersionTemplate: &kmspb.CryptoKeyVersionTemplate{Algorithm: kmspb.CryptoKeyVersion_HMAC_SHA256},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateCryptoKey: %v", err)
+	}
+	version := key.Name + "/cryptoKeyVersions/1"
+	signed, err := client.MacSign(ctx, &kmspb.MacSignRequest{Name: version, Data: []byte("msg")})
+	if err != nil {
+		t.Fatalf("MacSign: %v", err)
+	}
+	bad := append([]byte(nil), signed.Mac...)
+	bad[0] ^= 1
+
+	for _, tc := range []struct {
+		name string
+		mac  []byte
+		want bool
+	}{{"valid tag", signed.Mac, true}, {"invalid tag", bad, false}} {
+		resp, err := client.MacVerify(ctx, &kmspb.MacVerifyRequest{Name: version, Data: []byte("msg"), Mac: tc.mac})
+		if err != nil {
+			t.Fatalf("%s: MacVerify: %v", tc.name, err)
+		}
+		if resp.Success != tc.want || resp.VerifiedSuccessIntegrity != tc.want {
+			t.Errorf("%s: success=%v verified_success_integrity=%v, want both %v", tc.name, resp.Success, resp.VerifiedSuccessIntegrity, tc.want)
+		}
 	}
 }
