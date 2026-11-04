@@ -151,7 +151,7 @@ func (s *Storage) ImportCryptoKeyVersion(keyName string, algorithm int32, import
 	// Unwrap the key using RSA-OAEP with SHA-256
 	unwrappedKey, err := rsa.DecryptOAEP(sha256.New(), rand.Reader, importJob.PrivateKey, wrappedKey, nil)
 	if err != nil {
-		return nil, fmt.Errorf("failed to unwrap key: %w", err)
+		return nil, &ErrInvalidArgument{Message: "failed to unwrap key: the wrapped key material is invalid"}
 	}
 
 	// Create a new version with the unwrapped key

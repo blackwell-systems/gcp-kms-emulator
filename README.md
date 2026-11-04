@@ -2,7 +2,7 @@
 
 [![Blackwell Systems](https://raw.githubusercontent.com/blackwell-systems/blackwell-docs-theme/main/badge-trademark.svg)](https://github.com/blackwell-systems)
 [![Go Reference](https://pkg.go.dev/badge/github.com/blackwell-systems/gcp-kms-emulator.svg)](https://pkg.go.dev/github.com/blackwell-systems/gcp-kms-emulator)
-[![Go Version](https://img.shields.io/badge/go-1.24+-blue.svg)](https://go.dev/)
+[![Go Version](https://img.shields.io/badge/go-1.25+-blue.svg)](https://go.dev/)
 [![License](https://img.shields.io/badge/license-Apache%202.0-blue.svg)](LICENSE)
 
 > **IAM-enforced KMS emulator** — Test encryption AND permissions locally, fail like production would.
@@ -114,26 +114,45 @@ gcp-emulator start
 
 ## Supported Operations
 
-### Key Management
-- `CreateKeyRing` - Create new keyrings
-- `GetKeyRing` - Retrieve keyring metadata
-- `ListKeyRings` - List all keyrings
-- `CreateCryptoKey` - Create encryption/decryption keys
-- `GetCryptoKey` - Retrieve key metadata
-- `ListCryptoKeys` - List all keys in a keyring
-- `UpdateCryptoKey` - Update key metadata (labels)
+28 of the 33 Cloud KMS v1 methods are implemented, over both gRPC and REST, with real cryptography (Go standard library, plus `dcrd/secp256k1` for secp256k1).
 
-### Key Versioning
-- `CreateCryptoKeyVersion` - Create new key versions for rotation
-- `GetCryptoKeyVersion` - Get specific version details
-- `ListCryptoKeyVersions` - List all versions of a key
-- `UpdateCryptoKeyPrimaryVersion` - Switch to a different key version
-- `UpdateCryptoKeyVersion` - Update version state (enable/disable)
-- `DestroyCryptoKeyVersion` - Schedule version for destruction
+### Key management
+- `CreateKeyRing`, `GetKeyRing`, `ListKeyRings`
+- `CreateCryptoKey`, `GetCryptoKey`, `ListCryptoKeys`, `UpdateCryptoKey`, `UpdateCryptoKeyPrimaryVersion`
+- List methods support `page_size` and `page_token`
 
-### Encryption
-- `Encrypt` - Encrypt data with a crypto key (AES-256-GCM)
-- `Decrypt` - Decrypt data with a crypto key (works with any enabled version)
+### Key versions
+- `CreateCryptoKeyVersion`, `GetCryptoKeyVersion`, `ListCryptoKeyVersions`
+- `UpdateCryptoKeyVersion` (enable/disable), `DestroyCryptoKeyVersion`, `RestoreCryptoKeyVersion`
+
+### Cryptographic operations
+
+| Methods | Algorithms |
+|---------|------------|
+| `Encrypt`, `Decrypt` | `GOOGLE_SYMMETRIC_ENCRYPTION` (AES-256-GCM, with AAD) |
+| `RawEncrypt`, `RawDecrypt` | `AES_128_GCM`, `AES_256_GCM` |
+| `AsymmetricSign`, `GetPublicKey` | `RSA_SIGN_PKCS1_2048_SHA256`, `RSA_SIGN_PKCS1_3072_SHA256`, `RSA_SIGN_PKCS1_4096_SHA256`, `RSA_SIGN_PKCS1_4096_SHA512`, `EC_SIGN_P256_SHA256`, `EC_SIGN_P384_SHA384`, `EC_SIGN_SECP256K1_SHA256`, `EC_SIGN_ED25519` |
+| `AsymmetricDecrypt`, `GetPublicKey` | `RSA_DECRYPT_OAEP_2048_SHA256`, `RSA_DECRYPT_OAEP_3072_SHA256`, `RSA_DECRYPT_OAEP_4096_SHA256`, `RSA_DECRYPT_OAEP_4096_SHA512`, and the `_SHA1` variants |
+| `MacSign`, `MacVerify` | `HMAC_SHA1`, `HMAC_SHA224`, `HMAC_SHA256`, `HMAC_SHA384`, `HMAC_SHA512` (constant-time verification) |
+| `GenerateRandomBytes` | 1 to 1024 bytes |
+
+`AsymmetricSign` accepts either a `digest` or raw `data` (hashed by the emulator); Ed25519 takes `data` only. Using a key for the wrong purpose returns `FAILED_PRECONDITION`.
+
+### Key import
+- `CreateImportJob`, `GetImportJob`, `ListImportJobs`, `ImportCryptoKeyVersion` (RSA-OAEP key wrapping)
+
+### Data integrity (CRC32C)
+Every cryptographic method follows Google's [data integrity guidelines](https://cloud.google.com/kms/docs/data-integrity-guidelines):
+- Request checksums (`plaintext_crc32c`, `ciphertext_crc32c`, `additional_authenticated_data_crc32c`, `digest_crc32c`, `data_crc32c`, `mac_crc32c`, and the raw-operation fields) are verified; a mismatch returns `INVALID_ARGUMENT`.
+- Responses carry CRC32C checksums of their outputs (`ciphertext_crc32c`, `plaintext_crc32c`, `signature_crc32c`, `mac_crc32c`, `pem_crc32c`, ...) and set the `verified_*_crc32c` flags for each checksum that was checked. `MacVerify` sets `verified_success_integrity`.
+
+### Error codes
+Errors a caller can cause return the status code Cloud KMS uses for them, so a client can tell a bad request from a fault:
+- `NOT_FOUND` and `ALREADY_EXISTS` for missing or duplicate resources
+- `FAILED_PRECONDITION` for a disabled or destroyed version, a key with no enabled primary version, or the wrong key purpose
+- `INVALID_ARGUMENT` for an invalid ciphertext or AAD, a CRC32C mismatch, an invalid page token, or an out-of-range length
+
+`INTERNAL` is reserved for faults inside the emulator.
 
 ### secp256k1 signing
 
@@ -184,14 +203,10 @@ PENDING_GENERATION → ENABLED → DISABLED → DESTROY_SCHEDULED → DESTROYED
 ```
 
 ### Not Yet Implemented
-- Key lifecycle (RestoreCryptoKeyVersion)
-- Asymmetric operations (AsymmetricSign, AsymmetricDecrypt, GetPublicKey)
-- MAC operations (MacSign, MacVerify)
-- Import/Export (ImportCryptoKeyVersion, CreateImportJob, etc.)
-- Raw operations (RawEncrypt, RawDecrypt, Decapsulate)
-- Random generation (GenerateRandomBytes)
-
-**Current coverage:** 14 of ~26 methods (54%) - complete key management + lifecycle
+- `Decapsulate` (key encapsulation) returns `UNIMPLEMENTED`
+- `DeleteCryptoKey`, `DeleteCryptoKeyVersion`, `GetRetiredResource`, `ListRetiredResources`
+- RSA-PSS, raw PKCS#1 and post-quantum signing algorithms
+- `HSM` and `EXTERNAL` protection levels: every key is `SOFTWARE`
 
 ## Quick Start
 

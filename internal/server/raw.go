@@ -103,7 +103,7 @@ func (s *Server) GenerateRandomBytes(ctx context.Context, req *kmspb.GenerateRan
 
 	data, err := s.storage.GenerateRandomBytes(req.LengthBytes)
 	if err != nil {
-		return nil, status.Errorf(codes.InvalidArgument, "%v", err)
+		return nil, storageErr(err)
 	}
 
 	return &kmspb.GenerateRandomBytesResponse{

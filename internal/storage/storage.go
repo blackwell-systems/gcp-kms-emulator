@@ -59,7 +59,7 @@ func paginatePage[T any](items []T, pageToken string, pageSize int32) ([]T, stri
 	if pageToken != "" {
 		n, err := strconv.Atoi(pageToken)
 		if err != nil || n < 0 {
-			return nil, "", fmt.Errorf("invalid page_token")
+			return nil, "", &ErrInvalidArgument{Message: "invalid page_token"}
 		}
 		offset = n
 	}
@@ -319,11 +319,11 @@ func (s *Storage) Encrypt(keyName string, plaintext []byte, aad []byte) (ciphert
 
 	primaryVersion := cryptoKey.Versions[cryptoKey.PrimaryVersion]
 	if primaryVersion == nil {
-		return nil, "", fmt.Errorf("primary version not found")
+		return nil, "", &ErrFailedPrecondition{Message: "crypto key has no primary version"}
 	}
 
 	if primaryVersion.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, "", fmt.Errorf("primary version is not enabled")
+		return nil, "", &ErrFailedPrecondition{Message: fmt.Sprintf("primary version is not enabled: %s", cryptoKey.PrimaryVersion)}
 	}
 
 	// AES-GCM encryption
@@ -379,7 +379,7 @@ func (s *Storage) Decrypt(keyName string, ciphertext []byte, aad []byte) (plaint
 		}
 	}
 
-	return nil, "", fmt.Errorf("failed to decrypt with any key version")
+	return nil, "", &ErrInvalidArgument{Message: "Decryption failed: the ciphertext is invalid."}
 }
 
 func (s *Storage) decryptWithVersion(version *StoredCryptoKeyVersion, ciphertext []byte, aad []byte) ([]byte, error) {
