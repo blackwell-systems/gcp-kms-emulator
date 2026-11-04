@@ -22,11 +22,11 @@ func (s *Storage) RawEncrypt(versionName string, plaintext []byte, aad []byte) (
 		return nil, nil, 0, &ErrNotFound{Resource: versionName}
 	}
 	if cryptoKey.Purpose != kmspb.CryptoKey_RAW_ENCRYPT_DECRYPT {
-		return nil, nil, 0, &ErrFailedPrecondition{Message: "key purpose must be RAW_ENCRYPT_DECRYPT"}
+		return nil, nil, 0, incorrectPurpose(cryptoKey, "RAW_ENCRYPT_DECRYPT")
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, nil, 0, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+		return nil, nil, 0, versionNotEnabled(versionName, version.State)
 	}
 
 	if version.SymmetricKey == nil {
@@ -63,11 +63,11 @@ func (s *Storage) RawDecrypt(versionName string, ciphertext []byte, iv []byte, a
 		return nil, &ErrNotFound{Resource: versionName}
 	}
 	if cryptoKey.Purpose != kmspb.CryptoKey_RAW_ENCRYPT_DECRYPT {
-		return nil, &ErrFailedPrecondition{Message: "key purpose must be RAW_ENCRYPT_DECRYPT"}
+		return nil, incorrectPurpose(cryptoKey, "RAW_ENCRYPT_DECRYPT")
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+		return nil, versionNotEnabled(versionName, version.State)
 	}
 
 	if version.SymmetricKey == nil {

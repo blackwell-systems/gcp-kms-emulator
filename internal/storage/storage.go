@@ -314,7 +314,7 @@ func (s *Storage) Encrypt(keyName string, plaintext []byte, aad []byte) (ciphert
 	}
 
 	if cryptoKey.Purpose != kmspb.CryptoKey_ENCRYPT_DECRYPT {
-		return nil, "", &ErrFailedPrecondition{Message: "key purpose must be ENCRYPT_DECRYPT"}
+		return nil, "", incorrectPurpose(cryptoKey, "ENCRYPT_DECRYPT")
 	}
 
 	primaryVersion := cryptoKey.Versions[cryptoKey.PrimaryVersion]
@@ -323,7 +323,7 @@ func (s *Storage) Encrypt(keyName string, plaintext []byte, aad []byte) (ciphert
 	}
 
 	if primaryVersion.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, "", &ErrFailedPrecondition{Message: fmt.Sprintf("primary version is not enabled: %s", cryptoKey.PrimaryVersion)}
+		return nil, "", versionNotEnabled(primaryVersion.Name, primaryVersion.State)
 	}
 
 	// AES-GCM encryption
@@ -364,7 +364,7 @@ func (s *Storage) Decrypt(keyName string, ciphertext []byte, aad []byte) (plaint
 	}
 
 	if cryptoKey.Purpose != kmspb.CryptoKey_ENCRYPT_DECRYPT {
-		return nil, "", &ErrFailedPrecondition{Message: "key purpose must be ENCRYPT_DECRYPT"}
+		return nil, "", incorrectPurpose(cryptoKey, "ENCRYPT_DECRYPT")
 	}
 
 	// Try all versions (in case it was encrypted with a non-primary version)
@@ -506,7 +506,7 @@ func (s *Storage) UpdateCryptoKeyPrimaryVersion(keyName, versionName string) (*k
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+		return nil, versionNotEnabled(versionName, version.State)
 	}
 
 	cryptoKey.PrimaryVersion = versionName

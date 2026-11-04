@@ -7,6 +7,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- REST errors now use the Cloud KMS shape, `{"error": {"code": <HTTP status>, "message": ..., "status": "INVALID_ARGUMENT"}}`, instead of grpc-gateway's `{"code": 3, "message": ...}`, so REST clients written against Google parse them the same way
+- `MacVerify` sets `verified_success_integrity` to the value of `success`, as Cloud KMS does; it was always `true`, so a client following Google's integrity guidelines discarded every failed verification as corrupted
+- Error messages use Cloud KMS wording that clients match on: `<version> is not enabled, current state is: DISABLED.` (also `DESTROYED` and `DESTROY_SCHEDULED`) and `<key> has incorrect key purpose <purpose>; this operation requires <purpose>.`
+
 ## [0.10.1] - 2026-11-03
 
 ### Fixed

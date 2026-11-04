@@ -150,11 +150,11 @@ func (s *Storage) AsymmetricSign(versionName string, digest []byte, digestType s
 	}
 
 	if cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_SIGN {
-		return nil, &ErrFailedPrecondition{Message: "key purpose must be ASYMMETRIC_SIGN"}
+		return nil, incorrectPurpose(cryptoKey, "ASYMMETRIC_SIGN")
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+		return nil, versionNotEnabled(versionName, version.State)
 	}
 
 	if version.AsymmetricKey == nil {
@@ -248,11 +248,11 @@ func (s *Storage) AsymmetricDecrypt(versionName string, ciphertext []byte) ([]by
 	}
 
 	if cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_DECRYPT {
-		return nil, &ErrFailedPrecondition{Message: "key purpose must be ASYMMETRIC_DECRYPT"}
+		return nil, incorrectPurpose(cryptoKey, "ASYMMETRIC_DECRYPT")
 	}
 
 	if version.State != kmspb.CryptoKeyVersion_ENABLED {
-		return nil, &ErrFailedPrecondition{Message: fmt.Sprintf("crypto key version is not enabled: %s", versionName)}
+		return nil, versionNotEnabled(versionName, version.State)
 	}
 
 	if version.AsymmetricKey == nil {
@@ -288,7 +288,7 @@ func (s *Storage) GetPublicKey(versionName string) (string, int32, error) {
 	}
 
 	if cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_SIGN && cryptoKey.Purpose != kmspb.CryptoKey_ASYMMETRIC_DECRYPT {
-		return "", 0, &ErrFailedPrecondition{Message: "key purpose must be ASYMMETRIC_SIGN or ASYMMETRIC_DECRYPT"}
+		return "", 0, incorrectPurpose(cryptoKey, "ASYMMETRIC_SIGN or ASYMMETRIC_DECRYPT")
 	}
 
 	if version.AsymmetricKey == nil {
