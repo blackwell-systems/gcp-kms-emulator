@@ -44,6 +44,7 @@ jobs:
           context: .
           push: true
           build-args: |
+            VERSION=${{ github.ref_name }}
             VARIANT=dual
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

@@ -10,6 +10,8 @@
 FROM golang:1.25-alpine AS builder
 
 ARG VARIANT=grpc
+# Release version, set from the git tag by the release workflows
+ARG VERSION=
 
 WORKDIR /build
 
@@ -27,15 +29,15 @@ COPY . .
 RUN case "${VARIANT}" in \
     grpc) \
         echo "Building gRPC-only server..." && \
-        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server \
+        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "-X main.version=${VERSION}" -o server ./cmd/server \
         ;; \
     rest) \
         echo "Building REST-only server..." && \
-        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server-rest \
+        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "-X main.version=${VERSION}" -o server ./cmd/server-rest \
         ;; \
     dual) \
         echo "Building dual-protocol server..." && \
-        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o server ./cmd/server-dual \
+        CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -ldflags "-X main.version=${VERSION}" -o server ./cmd/server-dual \
         ;; \
     *) \
         echo "Invalid VARIANT: ${VARIANT}. Must be grpc, rest, or dual" && exit 1 \
