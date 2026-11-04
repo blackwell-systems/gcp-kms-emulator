@@ -86,7 +86,7 @@ func (s *Storage) RawDecrypt(versionName string, ciphertext []byte, iv []byte, a
 
 	plaintext, err := gcm.Open(nil, iv, ciphertext, aad)
 	if err != nil {
-		return nil, fmt.Errorf("decryption failed: %w", err)
+		return nil, &ErrInvalidArgument{Message: "Decryption failed: the ciphertext is invalid."}
 	}
 
 	return plaintext, nil

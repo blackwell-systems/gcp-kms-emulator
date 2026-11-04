@@ -10,7 +10,7 @@ import (
 // Length must be between 1 and 1024 inclusive.
 func (s *Storage) GenerateRandomBytes(length int32) ([]byte, error) {
 	if length <= 0 || length > 1024 {
-		return nil, fmt.Errorf("length must be between 1 and 1024, got %d", length)
+		return nil, &ErrInvalidArgument{Message: fmt.Sprintf("length must be between 1 and 1024, got %d", length)}
 	}
 
 	buf := make([]byte, length)

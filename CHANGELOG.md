@@ -7,6 +7,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Errors a caller can cause now return the status code Cloud KMS uses instead of `INTERNAL`:
+  - `Encrypt` on a key whose primary version is disabled, destroyed or missing returns `FAILED_PRECONDITION`
+  - `Decrypt` and `RawDecrypt` with an invalid ciphertext, a truncated ciphertext or the wrong AAD return `INVALID_ARGUMENT` ("Decryption failed: the ciphertext is invalid.")
+  - An invalid `page_token` on a List method, an unsupported digest type, an out-of-range `GenerateRandomBytes` length and invalid wrapped key material on `ImportCryptoKeyVersion` return `INVALID_ARGUMENT`
+- `GenerateRandomBytes` no longer reports a failure of the random source as `INVALID_ARGUMENT`
+
+### Documentation
+
+- The README listed asymmetric operations, MAC, raw encryption, key import, `RestoreCryptoKeyVersion` and `GenerateRandomBytes` as not implemented, although all of them are. It now lists every supported method and algorithm, documents CRC32C data integrity and the error codes, and names what remains unimplemented.
+
 ## [0.10.0] - 2026-10-14
 
 ### Added

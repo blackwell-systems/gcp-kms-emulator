@@ -56,7 +56,7 @@ func hashFromDigestType(digestType string) (crypto.Hash, error) {
 	case "SHA512":
 		return crypto.SHA512, nil
 	default:
-		return 0, fmt.Errorf("unsupported digest type: %s", digestType)
+		return 0, &ErrInvalidArgument{Message: fmt.Sprintf("unsupported digest type: %s", digestType)}
 	}
 }
 
