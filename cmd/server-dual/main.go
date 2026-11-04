@@ -28,6 +28,7 @@ import (
 	"google.golang.org/grpc"
 	"google.golang.org/grpc/reflection"
 
+	"github.com/blackwell-systems/gcp-kms-emulator/internal/buildinfo"
 	"github.com/blackwell-systems/gcp-kms-emulator/internal/gateway"
 	"github.com/blackwell-systems/gcp-kms-emulator/internal/server"
 )
@@ -36,12 +37,12 @@ var (
 	grpcPort = flag.Int("grpc-port", getEnvInt("GCP_KMS_GRPC_PORT", 9090), "gRPC port to listen on")
 	httpPort = flag.Int("http-port", getEnvInt("GCP_KMS_HTTP_PORT", 8080), "HTTP port to listen on")
 	logLevel = flag.String("log-level", getEnv("GCP_KMS_LOG_LEVEL", "info"), "Log level (debug, info, warn, error)")
-	version  = "0.1.0"
+	version  = "" // set from the release tag with -ldflags "-X main.version=..."
 )
 
 func main() {
 	flag.Usage = func() {
-		fmt.Fprintf(os.Stderr, "GCP KMS Emulator v%s (Dual Protocol)\n\n", version)
+		fmt.Fprintf(os.Stderr, "GCP KMS Emulator %s (Dual Protocol)\n\n", buildinfo.Version(version))
 		fmt.Fprintf(os.Stderr, "Usage: server-dual [flags]\n\n")
 		fmt.Fprintf(os.Stderr, "Flags:\n")
 		flag.PrintDefaults()
@@ -56,7 +57,7 @@ func main() {
 	flag.Parse()
 
 	iamMode := getEnv("IAM_MODE", "off")
-	log.Printf("GCP KMS Emulator v%s (Dual Protocol)", version)
+	log.Printf("GCP KMS Emulator %s (Dual Protocol)", buildinfo.Version(version))
 	log.Printf("Log level: %s", *logLevel)
 	log.Printf("IAM mode: %s", iamMode)
 	if dataDir := os.Getenv(server.DataDirEnv); dataDir != "" {
